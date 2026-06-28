@@ -163,6 +163,7 @@ export async function initAndroidBack(): Promise<void> {
         if (!blurEditableAndHideKeyboard()) void Keyboard.hide().catch(() => {});
         return;
       }
+      if (blurEditableAndHideKeyboard()) return;
       // b) Walk component handler stack (LIFO).
       for (let i = stack.length - 1; i >= 0; i--) {
         const fn = stack[i];
