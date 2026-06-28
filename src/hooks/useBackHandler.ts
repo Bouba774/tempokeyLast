@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { pushBackHandler, type BackHandler } from "@/lib/android-back";
 
 /**
@@ -12,12 +12,15 @@ import { pushBackHandler, type BackHandler } from "@/lib/android-back";
  * UI (sheet inside a screen inside a tab) closes from the inside out.
  */
 export function useBackHandler(active: boolean, handler: BackHandler): void {
+  const handlerRef = useRef(handler);
+
+  useEffect(() => {
+    handlerRef.current = handler;
+  }, [handler]);
+
   useEffect(() => {
     if (!active) return;
-    const off = pushBackHandler(handler);
+    const off = pushBackHandler(() => handlerRef.current());
     return off;
-    // We intentionally re-register when `active` flips. The handler ref is
-    // captured by closure; callers should keep it stable or accept replay.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 }

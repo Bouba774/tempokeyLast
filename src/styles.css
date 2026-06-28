@@ -494,7 +494,6 @@ html.native-android [class*="zoom-out-"] {
 }
 
 html.native-android .android-fixed-layer {
-  contain: layout paint;
   isolation: isolate;
 }
 
