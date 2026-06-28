@@ -303,7 +303,7 @@ export function TrackList() {
   // Android back-button integration:
   //  - a non-empty selection is cleared first (innermost handler, LIFO top),
   //  - then an active search query is cleared,
-  //  - then Radix overlays / history / exit toast take over (android-back.ts).
+  //  - then Radix overlays / history / native Android leave take over (android-back.ts).
   useBackHandler(selectedIds.size > 0, () => {
     clear();
     return true;
