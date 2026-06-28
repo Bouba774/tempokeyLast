@@ -10,8 +10,8 @@
  *         Escape so Radix closes it (single source of truth, no per-component
  *         wrapping needed).
  *      3. If the router can navigate back -> history.back().
- *      4. On the root route -> "press back again to quit" toast within 2s,
- *         then `App.exitApp()`.
+ *      4. On the root route -> minimize/leave the app like a native Android
+ *         app, instead of rewinding stale SPA history.
  *
  * Web preview is a no-op (Capacitor.isNativePlatform() === false).
  */
