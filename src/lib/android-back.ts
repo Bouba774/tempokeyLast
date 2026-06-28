@@ -10,26 +10,21 @@
  *         Escape so Radix closes it (single source of truth, no per-component
  *         wrapping needed).
  *      3. If the router can navigate back -> history.back().
- *      4. On the root route -> "press back again to quit" toast within 2s,
- *         then `App.exitApp()`.
+ *      4. On the root route -> minimize/leave the app like a native Android
+ *         app, instead of rewinding stale SPA history.
  *
  * Web preview is a no-op (Capacitor.isNativePlatform() === false).
  */
+import { Capacitor } from "@capacitor/core";
+import { App } from "@capacitor/app";
+import { Keyboard } from "@capacitor/keyboard";
 import { toast } from "sonner";
 
 export type BackHandler = () => boolean | void | Promise<boolean | void>;
 
 const stack: BackHandler[] = [];
 let initialised = false;
-let lastExitPromptAt = 0;
-
-// Hide Capacitor module specifiers from the web bundler (rolldown). The
-// packages are only installed during the Android build pipeline; on the web
-// these resolve to `null` and the whole module is a no-op.
-const dynImport = (name: string): Promise<any> =>
-  (0, eval)(`import(${JSON.stringify(name)})`);
-const safeImport = (name: string): Promise<any> =>
-  dynImport(name).catch(() => null);
+let handlingBack = false;
 
 export function pushBackHandler(handler: BackHandler): () => void {
   stack.push(handler);
@@ -64,20 +59,68 @@ function dispatchEscape() {
   (document.activeElement ?? document.body).dispatchEvent(ev);
 }
 
+function logicalPathname(): string {
+  if (typeof window === "undefined") return "/";
+  const hash = window.location.hash;
+  if (hash.startsWith("#/")) return hash.slice(1).split(/[?#]/, 1)[0] || "/";
+  return window.location.pathname || "/";
+}
+
+function isRootRoute(): boolean {
+  const path = logicalPathname();
+  return path === "/" || path === "" || path === "/index.html";
+}
+
+function isEditableElement(el: Element | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select";
+}
+
+function blurEditableAndHideKeyboard(): boolean {
+  const active = document.activeElement;
+  if (!isEditableElement(active)) return false;
+  try {
+    (active as HTMLElement).blur();
+  } catch {
+    /* ignore */
+  }
+  void Keyboard.hide().catch(() => {});
+  return true;
+}
+
+async function leaveAppFromRoot(): Promise<void> {
+  try {
+    await App.minimizeApp();
+    return;
+  } catch {
+    /* fallback below */
+  }
+  try {
+    await App.exitApp();
+  } catch {
+    toast("Retour Android indisponible", { duration: 1600 });
+  }
+}
+
 async function defaultBack(canGoBack: boolean): Promise<void> {
-  // 1) Open overlay → close it via Escape (Radix handles all primitives).
+  // 1) Focused text input → blur and hide the IME. This avoids Android WebView
+  //    focus deadlocks on search/template fields when back is pressed during
+  //    keyboard resize.
+  if (blurEditableAndHideKeyboard()) return;
+
+  // 2) Open overlay → close it via Escape (Radix handles all primitives).
   if (hasOpenRadixOverlay()) {
     dispatchEscape();
     return;
   }
-  // 2) Router history → back, but only when we're not on the root route.
+  // 3) Router history → back, but only when we're not on the root route.
   //    On the home screen, Android's expected behaviour is "double-tap to
   //    quit" — never silently rewind a stale browser history entry, which
   //    on a single-page app would either land on an empty state or crash
   //    the WebView when the popped state references unmounted components.
-  const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
-  const atRoot = pathname === "/" || pathname === "" || pathname === "/index.html";
-  if (!atRoot && canGoBack && window.history.length > 1) {
+  if (!isRootRoute() && canGoBack && window.history.length > 1) {
     try {
       window.history.back();
     } catch {
@@ -85,43 +128,42 @@ async function defaultBack(canGoBack: boolean): Promise<void> {
     }
     return;
   }
-  // 3) Root → double-press to exit.
-  const now = Date.now();
-  if (now - lastExitPromptAt < 2000) {
-    const cap = await safeImport("@capacitor/app");
-    cap?.App?.exitApp?.().catch?.(() => {});
-    return;
-  }
-  lastExitPromptAt = now;
-  toast("Appuyez encore une fois pour quitter TempoKey", { duration: 2000 });
+  // 4) Root → behave like a native Android app: leave/minimize immediately.
+  await leaveAppFromRoot();
 }
 
 export async function initAndroidBack(): Promise<void> {
   if (initialised) return;
   initialised = true;
 
-  const core = await safeImport("@capacitor/core");
-  if (!core?.Capacitor?.isNativePlatform?.()) return;
-
-  const appMod = await safeImport("@capacitor/app");
-  const kbMod = await safeImport("@capacitor/keyboard");
+  if (!Capacitor.isNativePlatform()) return;
 
   // Track keyboard visibility — first back press should dismiss the keyboard.
   let keyboardVisible = false;
-  kbMod?.Keyboard?.addListener?.("keyboardWillShow", () => {
+  Keyboard.addListener("keyboardWillShow", () => {
     keyboardVisible = true;
-  }).catch?.(() => {});
-  kbMod?.Keyboard?.addListener?.("keyboardWillHide", () => {
+  }).catch(() => {});
+  Keyboard.addListener("keyboardDidShow", () => {
+    keyboardVisible = true;
+  }).catch(() => {});
+  Keyboard.addListener("keyboardWillHide", () => {
     keyboardVisible = false;
-  }).catch?.(() => {});
+  }).catch(() => {});
+  Keyboard.addListener("keyboardDidHide", () => {
+    keyboardVisible = false;
+  }).catch(() => {});
 
-  appMod?.App?.addListener?.("backButton", async ({ canGoBack }: { canGoBack: boolean }) => {
+  App.addListener("backButton", async ({ canGoBack }: { canGoBack: boolean }) => {
+    if (handlingBack) return;
+    handlingBack = true;
     try {
       // a) Keyboard first.
-      if (keyboardVisible && kbMod?.Keyboard?.hide) {
-        await kbMod.Keyboard.hide().catch(() => {});
+      if (keyboardVisible) {
+        keyboardVisible = false;
+        if (!blurEditableAndHideKeyboard()) void Keyboard.hide().catch(() => {});
         return;
       }
+      if (blurEditableAndHideKeyboard()) return;
       // b) Walk component handler stack (LIFO).
       for (let i = stack.length - 1; i >= 0; i--) {
         const fn = stack[i];
@@ -137,6 +179,10 @@ export async function initAndroidBack(): Promise<void> {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[TempoKey] backButton handler failed", err);
+    } finally {
+      window.setTimeout(() => {
+        handlingBack = false;
+      }, 80);
     }
-  }).catch?.(() => {});
+  }).catch(() => {});
 }

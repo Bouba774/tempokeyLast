@@ -37,7 +37,7 @@ if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)) {
   document.documentElement.classList.add("native-android");
 }
 
-// Single centralized Android hardware back-button handler (toast-to-exit on
+// Single centralized Android hardware back-button handler (native leave on
 // root, Escape dispatch for modals/menus, history.back for inner screens,
 // keyboard dismiss). Stack of component handlers is registered via the
 // useBackHandler hook.
