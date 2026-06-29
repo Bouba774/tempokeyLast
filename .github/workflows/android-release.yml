@@ -1,8 +1,11 @@
 name: Build TempoKey Android (APK + AAB, signed)
+run-name: Android build ${{ github.ref_name }} · ${{ github.sha }}
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
   workflow_dispatch:
     inputs:
       versionName:
@@ -22,6 +25,9 @@ jobs:
     name: TempoKey signed release
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    concurrency:
+      group: tempokey-android-${{ github.ref }}
+      cancel-in-progress: true
     env:
       VERSION_NAME: ${{ github.event.inputs.versionName || '1.0.0' }}
       VERSION_CODE: ${{ github.event.inputs.versionCode || github.run_number }}
@@ -68,6 +74,42 @@ jobs:
 
       - name: Prepare Android project (SPA build + Capacitor sync)
         run: bash scripts/prepare-android.sh
+
+      - name: Guard APK fixes are included
+        run: |
+          set -euo pipefail
+
+          echo "▶ Checking Android back/crash fixes in source…"
+          grep -q "App.minimizeApp" src/lib/android-back.ts
+          grep -q "blurEditableAndHideKeyboard" src/lib/android-back.ts
+          grep -q "handlingBack" src/lib/android-back.ts
+          grep -q "hash.startsWith(\"#/\")" src/lib/android-back.ts
+          grep -q "handlerRef.current" src/hooks/useBackHandler.ts
+          grep -q "native-android" capacitor/main.tsx
+
+          echo "▶ Checking generated Android project contains native fixes…"
+          test -f android/app/src/main/AndroidManifest.xml
+          test -f android/app/src/main/java/app/lovable/tempokey/folderpicker/FolderPickerPlugin.java
+          test -f android/app/src/main/java/app/lovable/tempokey/analysis/AnalysisForegroundService.java
+          test -f android/app/src/main/java/app/lovable/tempokey/analysis/AnalysisNotificationPlugin.java
+
+          grep -q 'android.permission.READ_MEDIA_AUDIO' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.FOREGROUND_SERVICE_DATA_SYNC' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.WAKE_LOCK' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:windowSoftInputMode="adjustResize"' android/app/src/main/AndroidManifest.xml
+          grep -q 'AnalysisForegroundService' android/app/src/main/AndroidManifest.xml
+
+          MAIN_ACTIVITY=$(find android/app/src/main/java -name MainActivity.java | head -n1)
+          test -n "$MAIN_ACTIVITY"
+          grep -q 'registerPlugin(FolderPickerPlugin.class)' "$MAIN_ACTIVITY"
+          grep -q 'registerPlugin(AnalysisNotificationPlugin.class)' "$MAIN_ACTIVITY"
+
+          grep -q 'requestPermissionForAlias(alias, call, "pickFolderPermissionCallback")' android/app/src/main/java/app/lovable/tempokey/folderpicker/FolderPickerPlugin.java
+          grep -q 'takePersistableUriPermission' android/app/src/main/java/app/lovable/tempokey/folderpicker/FolderPickerPlugin.java
+          grep -q 'getPlayableUri' android/app/src/main/java/app/lovable/tempokey/folderpicker/FolderPickerPlugin.java
+          grep -q 'PARTIAL_WAKE_LOCK' android/app/src/main/java/app/lovable/tempokey/analysis/AnalysisForegroundService.java
+
+          echo "✓ APK fixes verified before Gradle build"
 
       - name: Stamp version
         run: bash scripts/android-version.sh "${VERSION_CODE}" "${VERSION_NAME}"
@@ -129,10 +171,10 @@ jobs:
       - name: Collect, rename & verify artifacts
         id: artifacts
         run: |
-          set -e
+          set -euo pipefail
           mkdir -p artifacts
 
-          APK_SRC=$(find android/app/build/outputs/apk/release -name "*.apk" ! -name "*unsigned*" | head -n1)
+          APK_SRC=$(find android/app/build/outputs/apk/release -name "*.apk" ! -name "*unsigned*" | sort | head -n1)
           if [ -z "$APK_SRC" ]; then
             echo "❌ No signed release APK found." >&2
             find android/app/build/outputs/apk -type f >&2 || true
@@ -141,7 +183,7 @@ jobs:
           cp "$APK_SRC" artifacts/TempoKey.apk
           echo "APK : $APK_SRC → artifacts/TempoKey.apk ($(stat -c%s artifacts/TempoKey.apk) bytes)"
 
-          AAB_SRC=$(find android/app/build/outputs/bundle/release -name "*.aab" | head -n1 || true)
+          AAB_SRC=$(find android/app/build/outputs/bundle/release -name "*.aab" | sort | head -n1 || true)
           if [ -n "$AAB_SRC" ]; then
             cp "$AAB_SRC" artifacts/TempoKey.aab
             echo "AAB : $AAB_SRC → artifacts/TempoKey.aab ($(stat -c%s artifacts/TempoKey.aab) bytes)"
@@ -153,6 +195,10 @@ jobs:
           APKSIGNER="${BUILD_TOOLS}apksigner"
           echo "▶ apksigner verify"
           "$APKSIGNER" verify --verbose --print-certs artifacts/TempoKey.apk
+
+          test -s artifacts/TempoKey.apk
+          if [ -f artifacts/TempoKey.aab ]; then test -s artifacts/TempoKey.aab; fi
+          echo "✓ Release artifacts ready for download"
 
       - name: Upload TempoKey.apk
         uses: actions/upload-artifact@v4
