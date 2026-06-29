@@ -173,7 +173,10 @@ export function TrackDetailSheet({
               inputMode="decimal"
               value={bpmDraft}
               onChange={(e) => setBpmDraft(e.target.value)}
-              onFocus={(e) => window.setTimeout(() => e.currentTarget.scrollIntoView({ block: "center" }), 120)}
+              onFocus={(e) => {
+                const el = e.currentTarget;
+                window.setTimeout(() => el.scrollIntoView({ block: "center" }), 120);
+              }}
               onBlur={commitBpm}
               className="h-10 w-28 rounded-lg border border-border bg-[var(--surface-elevated)] px-3 text-sm font-semibold tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
             />

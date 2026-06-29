@@ -214,7 +214,10 @@ function NumberInput({
         const v = e.target.value;
         onChange(v === "" ? null : Math.max(0, +v));
       }}
-      onFocus={(e) => window.setTimeout(() => e.currentTarget.scrollIntoView({ block: "center" }), 120)}
+      onFocus={(e) => {
+        const el = e.currentTarget;
+        window.setTimeout(() => el.scrollIntoView({ block: "center" }), 120);
+      }}
       className="h-10 w-full rounded-lg border border-border bg-[var(--surface-elevated)] px-3 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
     />
   );
