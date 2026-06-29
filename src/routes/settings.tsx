@@ -26,7 +26,6 @@ import { Copy, User } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import tempoKeyLogo from "@/assets/tempokey-logo.png";
-import djLamboLogo from "@/assets/dj-lambo-premier.png";
 import { useThemeStore } from "@/lib/theme-store";
 import { useSettingsStore } from "@/lib/settings-store";
 import { useLibraryStore } from "@/lib/library-store";
@@ -40,6 +39,8 @@ import {
   formatRelativeDate,
   type CacheStats,
 } from "@/lib/cache-admin";
+
+const djLamboLogo = "/__l5e/assets-v1/07d653f9-85c0-4145-b82a-8a34b44e5771/dj-lambo-premier-square.png";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Paramètres — TempoKey" }] }),

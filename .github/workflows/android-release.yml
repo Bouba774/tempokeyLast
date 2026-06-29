@@ -84,8 +84,11 @@ jobs:
           grep -q "blurEditableAndHideKeyboard" src/lib/android-back.ts
           grep -q "handlingBack" src/lib/android-back.ts
           grep -q "hash.startsWith(\"#/\")" src/lib/android-back.ts
+          grep -q 'path === "/index"' src/lib/android-back.ts
+          grep -q "closeTopTempoKeyOverlay" src/lib/android-back.ts
           grep -q "handlerRef.current" src/hooks/useBackHandler.ts
           grep -q "native-android" capacitor/main.tsx
+          grep -q "visualViewport" capacitor/main.tsx
 
           echo "▶ Checking generated Android project contains native fixes…"
           test -f android/app/src/main/AndroidManifest.xml
@@ -108,6 +111,8 @@ jobs:
           grep -q 'takePersistableUriPermission' android/app/src/main/java/app/lovable/tempokey/folderpicker/FolderPickerPlugin.java
           grep -q 'getPlayableUri' android/app/src/main/java/app/lovable/tempokey/folderpicker/FolderPickerPlugin.java
           grep -q 'PARTIAL_WAKE_LOCK' android/app/src/main/java/app/lovable/tempokey/analysis/AnalysisForegroundService.java
+          grep -q 'setTextZoom(100)' "$MAIN_ACTIVITY"
+          grep -q 'setOverScrollMode(android.view.View.OVER_SCROLL_NEVER)' "$MAIN_ACTIVITY"
 
           echo "✓ APK fixes verified before Gradle build"
 

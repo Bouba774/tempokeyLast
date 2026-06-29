@@ -236,6 +236,7 @@ export function RenamePanel() {
               <input
                 value={customFormat}
                 onChange={(e) => setCustomFormat(e.target.value)}
+                onFocus={(e) => window.setTimeout(() => e.currentTarget.scrollIntoView({ block: "center" }), 120)}
                 className="h-11 w-full rounded-lg border border-border bg-[var(--surface-elevated)] px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
                 placeholder="{ORDER} - {BPM} - {KEY} - {TITLE}"
               />

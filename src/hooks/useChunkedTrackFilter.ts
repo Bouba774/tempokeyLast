@@ -6,7 +6,10 @@ import {
   trackPassesFilters,
 } from "@/lib/library-filters";
 
-const CHUNK_SIZE = 450;
+const CHUNK_SIZE =
+  typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)
+    ? 140
+    : 450;
 
 type FilterState = {
   tracks: Track[];

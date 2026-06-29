@@ -35,6 +35,28 @@ log("App Started");
 // during taps/focus (fixed + backdrop-filter + entrance transforms).
 if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)) {
   document.documentElement.classList.add("native-android");
+
+  const syncViewport = () => {
+    const vv = window.visualViewport;
+    const height = Math.max(320, Math.round(vv?.height ?? window.innerHeight));
+    const width = Math.max(320, Math.round(vv?.width ?? window.innerWidth));
+    const keyboardDelta = Math.max(
+      0,
+      Math.round(window.innerHeight - height - (vv?.offsetTop ?? 0)),
+    );
+
+    document.documentElement.style.setProperty("--tk-viewport-height", `${height}px`);
+    document.documentElement.style.setProperty("--tk-viewport-width", `${width}px`);
+    document.documentElement.classList.toggle("keyboard-open", keyboardDelta > 120);
+  };
+
+  syncViewport();
+  window.visualViewport?.addEventListener("resize", syncViewport);
+  window.visualViewport?.addEventListener("scroll", syncViewport);
+  window.addEventListener("resize", syncViewport);
+  window.addEventListener("orientationchange", () => window.setTimeout(syncViewport, 250));
+  window.addEventListener("focusin", () => window.setTimeout(syncViewport, 80));
+  window.addEventListener("focusout", () => window.setTimeout(syncViewport, 160));
 }
 
 // Single centralized Android hardware back-button handler (native leave on

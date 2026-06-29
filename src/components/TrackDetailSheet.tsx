@@ -93,11 +93,16 @@ export function TrackDetailSheet({
   }
 
   return (
-    <div className="android-fixed-layer fixed inset-0 z-[60]" role="presentation">
+    <div
+      className="android-fixed-layer fixed inset-0 z-[60]"
+      role="presentation"
+      data-tempokey-overlay="open"
+    >
       <button
         type="button"
         aria-label="Fermer les détails"
         onClick={onClose}
+        data-tempokey-close="true"
         className="absolute inset-0 bg-background/75"
       />
       <section
@@ -118,6 +123,8 @@ export function TrackDetailSheet({
             type="button"
             aria-label="Fermer"
             onClick={onClose}
+            onPointerUp={onClose}
+            data-tempokey-close="true"
             className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
           >
             <X className="h-4 w-4" />
@@ -166,6 +173,7 @@ export function TrackDetailSheet({
               inputMode="decimal"
               value={bpmDraft}
               onChange={(e) => setBpmDraft(e.target.value)}
+              onFocus={(e) => window.setTimeout(() => e.currentTarget.scrollIntoView({ block: "center" }), 120)}
               onBlur={commitBpm}
               className="h-10 w-28 rounded-lg border border-border bg-[var(--surface-elevated)] px-3 text-sm font-semibold tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
             />
