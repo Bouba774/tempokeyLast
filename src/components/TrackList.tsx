@@ -393,6 +393,10 @@ export function TrackList() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onFocus={(e) => {
+              const el = e.currentTarget;
+              window.setTimeout(() => el.scrollIntoView({ block: "center" }), 120);
+            }}
             placeholder="Recherche : titre, 124, 120-125, 8A…"
             className="h-11 w-full rounded-xl border border-border bg-[var(--surface-elevated)] pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
           />

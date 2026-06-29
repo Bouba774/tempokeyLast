@@ -49,11 +49,16 @@ export function AudioPermissionDialog({
   if (!open) return null;
 
   return (
-    <div className="android-fixed-layer fixed inset-0 z-50 grid place-items-center bg-background/80 px-5" role="presentation">
+    <div
+      className="android-fixed-layer fixed inset-0 z-50 grid place-items-center bg-background/80 px-5"
+      role="presentation"
+      data-tempokey-overlay="open"
+    >
       <button
         type="button"
         aria-label="Annuler"
         onClick={onCancel}
+        data-tempokey-close="true"
         className="absolute inset-0"
       />
       <section

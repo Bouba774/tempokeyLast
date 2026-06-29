@@ -59,6 +59,26 @@ function dispatchEscape() {
   (document.activeElement ?? document.body).dispatchEvent(ev);
 }
 
+function closeTopTempoKeyOverlay(): boolean {
+  const closers = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '[data-tempokey-overlay="open"] [data-tempokey-close="true"]',
+    ),
+  ).filter((el) => {
+    const rect = el.getBoundingClientRect();
+    const style = window.getComputedStyle(el);
+    return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden";
+  });
+  const top = closers.at(-1);
+  if (!top) return false;
+  try {
+    top.click();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function logicalPathname(): string {
   if (typeof window === "undefined") return "/";
   const hash = window.location.hash;
@@ -68,7 +88,7 @@ function logicalPathname(): string {
 
 function isRootRoute(): boolean {
   const path = logicalPathname();
-  return path === "/" || path === "" || path === "/index.html";
+  return path === "/" || path === "" || path === "/index" || path === "/index.html";
 }
 
 function isEditableElement(el: Element | null): boolean {
@@ -111,6 +131,7 @@ async function defaultBack(canGoBack: boolean): Promise<void> {
   if (blurEditableAndHideKeyboard()) return;
 
   // 2) Open overlay → close it via Escape (Radix handles all primitives).
+  if (closeTopTempoKeyOverlay()) return;
   if (hasOpenRadixOverlay()) {
     dispatchEscape();
     return;

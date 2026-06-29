@@ -71,8 +71,11 @@ export function FilterSheet({ open, onClose, filters, onChange }: Props) {
   const activeSource = active?.source ?? "import";
 
   return (
-    <div className="android-fixed-layer fixed inset-0 z-50 flex flex-col justify-end bg-background/75">
-      <button aria-label="Fermer" onClick={onClose} className="flex-1" />
+    <div
+      className="android-fixed-layer fixed inset-0 z-50 flex flex-col justify-end bg-background/75"
+      data-tempokey-overlay="open"
+    >
+      <button aria-label="Fermer" onClick={onClose} data-tempokey-close="true" className="flex-1" />
       <div className="rounded-t-2xl border-t border-border bg-[var(--surface)] max-h-[85dvh] overflow-y-auto">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-[var(--surface)] px-4 py-3">
           <h2 className="text-base font-semibold">Filtres & tri</h2>
@@ -89,6 +92,7 @@ export function FilterSheet({ open, onClose, filters, onChange }: Props) {
             <button
               onClick={onClose}
               aria-label="Fermer"
+              data-tempokey-close="true"
               className="grid h-9 w-9 place-items-center rounded-lg hover:bg-accent"
             >
               <X className="h-4 w-4" />
@@ -209,6 +213,10 @@ function NumberInput({
       onChange={(e) => {
         const v = e.target.value;
         onChange(v === "" ? null : Math.max(0, +v));
+      }}
+      onFocus={(e) => {
+        const el = e.currentTarget;
+        window.setTimeout(() => el.scrollIntoView({ block: "center" }), 120);
       }}
       className="h-10 w-full rounded-lg border border-border bg-[var(--surface-elevated)] px-3 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
     />

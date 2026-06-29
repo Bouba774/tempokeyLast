@@ -1140,6 +1140,61 @@ NODE
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
+# Harden the generated MainActivity WebView for Android keyboard/back flows.
+# Keeping text zoom fixed prevents Android accessibility/font autosizing from
+# relaying out focused inputs mid-keystroke, and disabling overscroll removes
+# the WebView edge gesture that can conflict with Capacitor back handling.
+# ──────────────────────────────────────────────────────────────────────────
+if [ -d "android/app" ]; then
+  echo "▶ Applying MainActivity WebView stability settings…"
+  node <<'NODE'
+const fs = require("fs");
+const path = require("path");
+
+function find(dir, name) {
+  if (!fs.existsSync(dir)) return null;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      const r = find(p, name);
+      if (r) return r;
+    } else if (e.name === name) return p;
+  }
+  return null;
+}
+
+const mainActivity = find("android/app/src/main/java", "MainActivity.java");
+if (!mainActivity) process.exit(0);
+let src = fs.readFileSync(mainActivity, "utf8");
+if (!src.includes("setTextZoom(100)")) {
+  const stabilityBlock = `
+        try {
+            if (bridge != null && bridge.getWebView() != null) {
+                android.webkit.WebSettings settings = bridge.getWebView().getSettings();
+                settings.setTextZoom(100);
+                settings.setMediaPlaybackRequiresUserGesture(false);
+                settings.setDomStorageEnabled(true);
+                bridge.getWebView().setOverScrollMode(android.view.View.OVER_SCROLL_NEVER);
+            }
+        } catch (Exception ignored) {}`;
+
+  if (/super\.onCreate\([^)]*\);/.test(src)) {
+    src = src.replace(/(super\.onCreate\([^)]*\);)/, `$1${stabilityBlock}`);
+  } else {
+    src = src.replace(
+      /\}\s*$/,
+      `    @Override\n    public void onCreate(android.os.Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);${stabilityBlock}\n    }\n}\n`,
+    );
+  }
+  fs.writeFileSync(mainActivity, src);
+  console.log("  ✓ MainActivity.java WebView settings hardened");
+} else {
+  console.log("  ✓ MainActivity.java WebView settings already present");
+}
+NODE
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
 # Inject TempoKey's audio-file permissions into AndroidManifest.xml.
 # Capacitor's default manifest only declares INTERNET, which makes Android
 # App Info show "No permissions requested". We add the minimal set required

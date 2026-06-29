@@ -441,6 +441,7 @@ html.native-android body,
 html.native-android #app {
   min-height: 100vh;
   min-height: 100dvh;
+  min-height: var(--tk-viewport-height, 100dvh);
 }
 
 html.native-android body {
@@ -495,6 +496,23 @@ html.native-android [class*="zoom-out-"] {
 
 html.native-android .android-fixed-layer {
   isolation: isolate;
+}
+
+html.native-android.keyboard-open .android-fixed-layer {
+  position: absolute !important;
+  min-height: var(--tk-viewport-height, 100dvh);
+}
+
+html.native-android .android-fixed-layer [role="dialog"],
+html.native-android .android-fixed-layer [role="alertdialog"] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+html.native-android input:focus,
+html.native-android textarea:focus,
+html.native-android select:focus {
+  scroll-margin-block: 96px;
 }
 
 /* Équaliseur "now-playing" — barres animées discrètes */
