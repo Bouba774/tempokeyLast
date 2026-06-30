@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Prepares the Android Capacitor project from a dedicated SPA build.
 #
+# Build marker: tempokey-android-build-2026-06-30 (force CI rebuild to ship
+# the latest back-button / keyboard / overlay stability fixes).
+#
 # - Builds a static SPA via vite.config.capacitor.ts (output: dist/android/).
 # - Falls back to hoisting index.html if it ends up in a nested folder
 #   (different Vite versions handle rollup `input` paths slightly differently).
