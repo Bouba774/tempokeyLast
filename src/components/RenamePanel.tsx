@@ -15,12 +15,17 @@ import { isFsAccessSupported } from "@/lib/rename/dir-handle";
 import { applyRename, undoOperation, type ApplyProgress } from "@/lib/rename/engine";
 import { loadHistory, type RenameOperation } from "@/lib/rename/history";
 import { useBackHandler } from "@/hooks/useBackHandler";
+import { releaseAndroidFocusMarker, stabilizeAndroidFocus } from "@/lib/android-ui";
 
 type Step = "select" | "template" | "preview" | "applying" | "done";
 
 const PREVIEW_LIMIT = 200;
+const SETTLED_DELAY =
+  typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)
+    ? 280
+    : 140;
 
-function useSettledValue<T>(value: T, delay = 140): T {
+function useSettledValue<T>(value: T, delay = SETTLED_DELAY): T {
   const [settled, setSettled] = useState(value);
 
   useEffect(() => {
@@ -236,10 +241,10 @@ export function RenamePanel() {
               <input
                 value={customFormat}
                 onChange={(e) => setCustomFormat(e.target.value)}
-                onFocus={(e) => {
-                  const el = e.currentTarget;
-                  window.setTimeout(() => el.scrollIntoView({ block: "center" }), 120);
-                }}
+                onFocus={(e) => stabilizeAndroidFocus(e.currentTarget)}
+                onBlur={releaseAndroidFocusMarker}
+                autoCorrect="off"
+                spellCheck={false}
                 className="h-11 w-full rounded-lg border border-border bg-[var(--surface-elevated)] px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
                 placeholder="{ORDER} - {BPM} - {KEY} - {TITLE}"
               />

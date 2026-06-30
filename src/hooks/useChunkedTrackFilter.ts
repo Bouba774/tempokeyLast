@@ -8,8 +8,33 @@ import {
 
 const CHUNK_SIZE =
   typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)
-    ? 140
+    ? 64
     : 450;
+
+type ScheduledHandle =
+  | { type: "idle"; id: number }
+  | { type: "timeout"; id: number };
+
+function scheduleChunk(callback: () => void): ScheduledHandle {
+  if (
+    typeof window !== "undefined" &&
+    "requestIdleCallback" in window &&
+    typeof window.requestIdleCallback === "function"
+  ) {
+    const id = window.requestIdleCallback(callback, { timeout: 90 });
+    return { type: "idle", id };
+  }
+  return { type: "timeout", id: window.setTimeout(callback, 16) };
+}
+
+function cancelScheduled(handle: ScheduledHandle | null): void {
+  if (!handle || typeof window === "undefined") return;
+  if (handle.type === "idle" && typeof window.cancelIdleCallback === "function") {
+    window.cancelIdleCallback(handle.id);
+    return;
+  }
+  window.clearTimeout(handle.id);
+}
 
 type FilterState = {
   tracks: Track[];
@@ -32,6 +57,7 @@ export function useChunkedTrackFilter(
   useEffect(() => {
     let cancelled = false;
     let index = 0;
+    let scheduled: ScheduledHandle | null = null;
     const next: Track[] = [];
 
     setState((prev) => ({ tracks: prev.tracks, pending: true }));
@@ -45,17 +71,17 @@ export function useChunkedTrackFilter(
       }
 
       if (index < tracks.length) {
-        window.setTimeout(runChunk, 0);
+        scheduled = scheduleChunk(runChunk);
         return;
       }
 
       if (!cancelled) setState({ tracks: next, pending: false });
     };
 
-    const handle = window.setTimeout(runChunk, 0);
+    scheduled = scheduleChunk(runChunk);
     return () => {
       cancelled = true;
-      window.clearTimeout(handle);
+      cancelScheduled(scheduled);
     };
   }, [tracks, parsedQuery, filters]);
 
