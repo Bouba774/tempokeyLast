@@ -12,6 +12,7 @@ import {
   type OrderSource,
 } from "@/lib/ordering-store";
 import { useBackHandler } from "@/hooks/useBackHandler";
+import { closeAndroidSafe, releaseAndroidFocusMarker, stabilizeAndroidFocus } from "@/lib/android-ui";
 
 interface Props {
   open: boolean;
@@ -47,9 +48,10 @@ const SORTS: { id: OrderSource; label: string }[] = [
 export function FilterSheet({ open, onClose, filters, onChange }: Props) {
   const active = useOrderingStore((s) => s.active);
   const setOrder = useOrderingStore((s) => s.setOrder);
+  const handleClose = () => closeAndroidSafe(onClose);
 
   useBackHandler(open, () => {
-    onClose();
+    handleClose();
     return true;
   });
 
@@ -75,8 +77,8 @@ export function FilterSheet({ open, onClose, filters, onChange }: Props) {
       className="android-fixed-layer fixed inset-0 z-50 flex flex-col justify-end bg-background/75"
       data-tempokey-overlay="open"
     >
-      <button aria-label="Fermer" onClick={onClose} data-tempokey-close="true" className="flex-1" />
-      <div className="rounded-t-2xl border-t border-border bg-[var(--surface)] max-h-[85dvh] overflow-y-auto">
+      <button aria-label="Fermer" onClick={handleClose} data-tempokey-close="true" className="flex-1" />
+      <div role="dialog" data-state="open" aria-label="Filtres et tri" className="android-bottom-sheet rounded-t-2xl border-t border-border bg-[var(--surface)] max-h-[85dvh] overflow-y-auto">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-[var(--surface)] px-4 py-3">
           <h2 className="text-base font-semibold">Filtres & tri</h2>
           <div className="flex items-center gap-1">
@@ -90,7 +92,7 @@ export function FilterSheet({ open, onClose, filters, onChange }: Props) {
               <RotateCcw className="h-3.5 w-3.5" /> Réinitialiser
             </button>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               aria-label="Fermer"
               data-tempokey-close="true"
               className="grid h-9 w-9 place-items-center rounded-lg hover:bg-accent"
@@ -183,7 +185,7 @@ export function FilterSheet({ open, onClose, filters, onChange }: Props) {
 
         <div className="sticky bottom-0 border-t border-border bg-[var(--surface)] px-4 py-3 safe-pb safe-px">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="h-11 w-full rounded-xl text-sm font-semibold text-[var(--primary-foreground)]"
             style={{ background: "var(--gradient-primary)" }}
           >
@@ -214,10 +216,8 @@ function NumberInput({
         const v = e.target.value;
         onChange(v === "" ? null : Math.max(0, +v));
       }}
-      onFocus={(e) => {
-        const el = e.currentTarget;
-        window.setTimeout(() => el.scrollIntoView({ block: "center" }), 120);
-      }}
+      onFocus={(e) => stabilizeAndroidFocus(e.currentTarget)}
+      onBlur={releaseAndroidFocusMarker}
       className="h-10 w-full rounded-lg border border-border bg-[var(--surface-elevated)] px-3 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
     />
   );
