@@ -44,6 +44,7 @@ import { EnergyMeter } from "./viz/EnergyMeter";
 import { CompatibilityBadge } from "./viz/CompatibilityBadge";
 import { EmptyState } from "./ui/empty-state";
 import { useBackHandler } from "@/hooks/useBackHandler";
+import { releaseAndroidFocusMarker, stabilizeAndroidFocus } from "@/lib/android-ui";
 import { NowPlayingBars } from "./ui/now-playing-bars";
 import { Music2, SearchX } from "lucide-react";
 import {
@@ -393,10 +394,11 @@ export function TrackList() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onFocus={(e) => {
-              const el = e.currentTarget;
-              window.setTimeout(() => el.scrollIntoView({ block: "center" }), 120);
-            }}
+            onFocus={(e) => stabilizeAndroidFocus(e.currentTarget, { block: "nearest", inline: "nearest" })}
+            onBlur={releaseAndroidFocusMarker}
+            enterKeyHint="search"
+            autoCorrect="off"
+            spellCheck={false}
             placeholder="Recherche : titre, 124, 120-125, 8A…"
             className="h-11 w-full rounded-xl border border-border bg-[var(--surface-elevated)] pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
           />

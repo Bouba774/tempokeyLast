@@ -496,6 +496,8 @@ html.native-android [class*="zoom-out-"] {
 
 html.native-android .android-fixed-layer {
   isolation: isolate;
+  overscroll-behavior: contain;
+  touch-action: manipulation;
 }
 
 html.native-android.keyboard-open .android-fixed-layer {
@@ -507,6 +509,18 @@ html.native-android .android-fixed-layer [role="dialog"],
 html.native-android .android-fixed-layer [role="alertdialog"] {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+}
+
+html.native-android .android-bottom-sheet {
+  transform: none !important;
+}
+
+html.native-android.keyboard-open [role="tablist"] {
+  position: static !important;
+}
+
+html.native-android.android-input-active .android-fixed-layer {
+  pointer-events: auto;
 }
 
 html.native-android input:focus,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   X,
   Lock,
@@ -12,6 +12,7 @@ import {
 import { useLibraryStore } from "@/lib/library-store";
 import { useAnalysisStore } from "@/lib/analysis-store";
 import { useBackHandler } from "@/hooks/useBackHandler";
+import { closeAndroidSafe, releaseAndroidFocusMarker, stabilizeAndroidFocus } from "@/lib/android-ui";
 import {
   ALL_CAMELOT,
   confidenceLabel,
@@ -42,6 +43,11 @@ export function TrackDetailSheet({
   const [bpmDraft, setBpmDraft] = useState<string>("");
   const [camelotOpen, setCamelotOpen] = useState(false);
 
+  const handleClose = useCallback(() => {
+    setCamelotOpen(false);
+    closeAndroidSafe(onClose);
+  }, [onClose]);
+
   useEffect(() => {
     setBpmDraft(track?.bpm != null ? String(track.bpm) : "");
     setCamelotOpen(false);
@@ -66,13 +72,13 @@ export function TrackDetailSheet({
   // Safety net: if the parent ever leaves the sheet "open" with no matching
   // track (deleted/library reload), force a close so the user is never stuck.
   useEffect(() => {
-    if (trackId && !track) onClose();
-  }, [trackId, track, onClose]);
+    if (trackId && !track) handleClose();
+  }, [trackId, track, handleClose]);
 
   // Android hardware back button closes the sheet first (LIFO, highest
   // priority while the sheet is open) before any other back behavior.
   useBackHandler(open, () => {
-    onClose();
+    handleClose();
     return true;
   });
 
@@ -101,14 +107,15 @@ export function TrackDetailSheet({
       <button
         type="button"
         aria-label="Fermer les détails"
-        onClick={onClose}
+        onClick={handleClose}
         data-tempokey-close="true"
         className="absolute inset-0 bg-background/75"
       />
       <section
         role="dialog"
+        data-state="open"
         aria-label="Détails du morceau"
-        className="fixed inset-x-0 bottom-0 z-[61] mx-auto max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-border bg-[var(--surface-elevated)] p-4 pb-[max(env(safe-area-inset-bottom,0px),16px)] shadow-2xl outline-none"
+        className="android-bottom-sheet absolute inset-x-0 bottom-0 z-[61] mx-auto max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-t-3xl border border-border bg-[var(--surface-elevated)] p-4 pb-[max(env(safe-area-inset-bottom,0px),16px)] shadow-2xl outline-none"
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -122,8 +129,7 @@ export function TrackDetailSheet({
           <button
             type="button"
             aria-label="Fermer"
-            onClick={onClose}
-            onPointerUp={onClose}
+            onClick={handleClose}
             data-tempokey-close="true"
             className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
           >
@@ -173,11 +179,11 @@ export function TrackDetailSheet({
               inputMode="decimal"
               value={bpmDraft}
               onChange={(e) => setBpmDraft(e.target.value)}
-              onFocus={(e) => {
-                const el = e.currentTarget;
-                window.setTimeout(() => el.scrollIntoView({ block: "center" }), 120);
+              onFocus={(e) => stabilizeAndroidFocus(e.currentTarget)}
+              onBlur={() => {
+                commitBpm();
+                releaseAndroidFocusMarker();
               }}
-              onBlur={commitBpm}
               className="h-10 w-28 rounded-lg border border-border bg-[var(--surface-elevated)] px-3 text-sm font-semibold tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
             />
             <span className="text-xs text-muted-foreground">BPM</span>

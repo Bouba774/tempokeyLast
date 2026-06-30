@@ -86,6 +86,10 @@ jobs:
           grep -q "hash.startsWith(\"#/\")" src/lib/android-back.ts
           grep -q 'path === "/index"' src/lib/android-back.ts
           grep -q "closeTopTempoKeyOverlay" src/lib/android-back.ts
+          grep -q "stabilizeAndroidFocus" src/lib/android-ui.ts
+          grep -q "closeAndroidSafe" src/lib/android-ui.ts
+          grep -q "android-bottom-sheet" src/components/TrackDetailSheet.tsx
+          grep -q "requestIdleCallback" src/hooks/useChunkedTrackFilter.ts
           grep -q "handlerRef.current" src/hooks/useBackHandler.ts
           grep -q "native-android" capacitor/main.tsx
           grep -q "visualViewport" capacitor/main.tsx
