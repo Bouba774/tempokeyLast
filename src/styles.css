@@ -513,7 +513,6 @@ html.native-android .android-fixed-layer [role="alertdialog"] {
 
 html.native-android .android-bottom-sheet {
   transform: none !important;
-  contain: content;
 }
 
 html.native-android.keyboard-open [role="tablist"] {
