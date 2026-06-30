@@ -12,7 +12,7 @@ import {
 import { useLibraryStore } from "@/lib/library-store";
 import { useAnalysisStore } from "@/lib/analysis-store";
 import { useBackHandler } from "@/hooks/useBackHandler";
-import { closeAndroidSafe, stabilizeAndroidFocus } from "@/lib/android-ui";
+import { closeAndroidSafe, releaseAndroidFocusMarker, stabilizeAndroidFocus } from "@/lib/android-ui";
 import {
   ALL_CAMELOT,
   confidenceLabel,
@@ -180,7 +180,10 @@ export function TrackDetailSheet({
               value={bpmDraft}
               onChange={(e) => setBpmDraft(e.target.value)}
               onFocus={(e) => stabilizeAndroidFocus(e.currentTarget)}
-              onBlur={commitBpm}
+              onBlur={() => {
+                commitBpm();
+                releaseAndroidFocusMarker();
+              }}
               className="h-10 w-28 rounded-lg border border-border bg-[var(--surface-elevated)] px-3 text-sm font-semibold tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
             />
             <span className="text-xs text-muted-foreground">BPM</span>
