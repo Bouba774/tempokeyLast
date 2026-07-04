@@ -292,3 +292,177 @@ export function estimateBPM(samples: Float32Array, sampleRate: number): BpmEstim
     suspect,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Vamp-FixedTempoEstimator compatibility mode (DiscDJ-faithful).
+//
+// The Vamp "FixedTempoEstimator" plugin used by DiscDJ picks its BPM by
+// autocorrelating an onset-strength envelope and weighting the resulting
+// tempogram with a log-Gaussian prior centred around 120 BPM. It does
+// **not** apply a comb filter (which is why our default engine tends to
+// pick the ×4/3 / ×2 octave sibling on Afro / hip-hop material where the
+// half-time backbeat is the "true" DJ pulse). This function reproduces
+// that behaviour as faithfully as possible so the fusion layer can favor
+// the Vamp candidate when it disagrees with the comb-based one at a
+// non-octave ratio.
+// ---------------------------------------------------------------------------
+
+export interface VampCandidate {
+  bpm: number;
+  score: number;   // normalised 0..1 (prior-weighted ACF)
+  raw: number;     // ACF value at that lag (0..1)
+  regularity: number; // ACF sharpness — how well isolated the peak is (0..1)
+}
+
+export interface VampEstimate {
+  bpm: number | null;
+  confidence: number;
+  candidates: VampCandidate[];
+  regularity: number;
+  rangeScores: { min: number; max: number; bpm: number; score: number }[];
+}
+
+/**
+ * Vamp FixedTempoEstimator emulation. `preferredBpm` and `sigma` control
+ * the log-Gaussian prior (defaults match Vamp's ~120 BPM anchor). When
+ * `bpmRange` is passed, candidates outside the range are discarded — used
+ * by the fusion layer to sweep multiple BPM windows.
+ */
+export function estimateBPMVampCompat(
+  samples: Float32Array,
+  sampleRate: number,
+  opts: { preferredBpm?: number; sigma?: number; bpmRange?: [number, number] } = {},
+): VampEstimate {
+  const empty: VampEstimate = { bpm: null, confidence: 0, candidates: [], regularity: 0, rangeScores: [] };
+  if (samples.length < sampleRate * 5) return empty;
+
+  const { odf, rate } = computeOnsetEnvelope(samples, sampleRate);
+  if (odf.length < 256) return empty;
+
+  // Zero-mean & unit-scale ODF for a comparable ACF magnitude.
+  let mean = 0;
+  for (let i = 0; i < odf.length; i++) mean += odf[i];
+  mean /= odf.length;
+  let energy = 0;
+  for (let i = 0; i < odf.length; i++) {
+    odf[i] -= mean;
+    energy += odf[i] * odf[i];
+  }
+  const norm = energy > 0 ? 1 / Math.sqrt(energy / odf.length) : 1;
+  for (let i = 0; i < odf.length; i++) odf[i] *= norm;
+
+  const [rMin, rMax] = opts.bpmRange ?? [MIN_BPM, MAX_BPM];
+  const preferred = opts.preferredBpm ?? 120;
+  const sigma = opts.sigma ?? 0.9; // wider than the default engine — Vamp
+                                    // is less aggressive about pulling
+                                    // slow tracks toward the middle.
+
+  const minLag = Math.max(2, Math.floor((60 * rate) / rMax));
+  const maxLag = Math.min(odf.length - 1, Math.floor((60 * rate) / rMin));
+
+  // FFT-based ACF (same as the main engine).
+  let nfft = 1;
+  while (nfft < odf.length * 2) nfft <<= 1;
+  const re = new Float32Array(nfft);
+  const im = new Float32Array(nfft);
+  for (let i = 0; i < odf.length; i++) re[i] = odf[i];
+  fftInPlace(re, im);
+  for (let i = 0; i < nfft; i++) {
+    re[i] = re[i] * re[i] + im[i] * im[i];
+    im[i] = 0;
+  }
+  for (let i = 0; i < nfft; i++) im[i] = -im[i];
+  fftInPlace(re, im);
+  const invN = 1 / nfft;
+  const acf = new Float32Array(maxLag + 1);
+  let acfMax = 0;
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    const overlap = odf.length - lag;
+    const v = overlap > 0 ? (re[lag] * invN) / overlap : 0;
+    acf[lag] = v;
+    if (v > acfMax) acfMax = v;
+  }
+  if (acfMax <= 0) return empty;
+
+  // Vamp-style: pure ACF weighted by log-Gaussian tempo prior. NO comb
+  // filter — that is what makes DiscDJ report slow tempi on Afro/reggaeton
+  // where the kick is on beats 1 & 3 rather than every beat.
+  const bpmFromLag = (lag: number) => (60 * rate) / lag;
+  const candidates: VampCandidate[] = [];
+  for (let lag = minLag + 1; lag < maxLag; lag++) {
+    const v = acf[lag];
+    if (v <= 0) continue;
+    if (!(v > acf[lag - 1] && v >= acf[lag + 1])) continue;
+    const bpm = bpmFromLag(lag);
+    const logDist = Math.log(bpm / preferred);
+    const prior = Math.exp(-0.5 * (logDist / sigma) * (logDist / sigma));
+    // Peak sharpness: ratio of peak vs the average of a ±5-lag neighborhood.
+    let nbSum = 0, nbCnt = 0;
+    for (let k = Math.max(minLag, lag - 5); k <= Math.min(maxLag, lag + 5); k++) {
+      if (k === lag) continue;
+      nbSum += Math.max(0, acf[k]);
+      nbCnt += 1;
+    }
+    const nbMean = nbCnt > 0 ? nbSum / nbCnt : 0;
+    const sharpness = nbMean > 0 ? Math.min(1, (v - nbMean) / v) : 0.5;
+    candidates.push({
+      bpm,
+      score: (v / acfMax) * prior,
+      raw: v / acfMax,
+      regularity: sharpness,
+    });
+  }
+  if (candidates.length === 0) return empty;
+  candidates.sort((a, b) => b.score - a.score);
+
+  // Sub-lag parabolic refinement of the top candidate.
+  const topBpm = candidates[0].bpm;
+  const topLag = (60 * rate) / topBpm;
+  const refined = refineLag(acf, Math.round(topLag), minLag, maxLag);
+  const refinedBpm = bpmFromLag(refined);
+  const best = candidates[0];
+
+  // Confidence: prior-weighted margin over the best non-octave runner-up.
+  const runner = candidates.find((c) => {
+    const r = c.bpm / best.bpm;
+    const octave =
+      Math.abs(r - 1) < 0.03 ||
+      Math.abs(r - 2) < 0.05 ||
+      Math.abs(r - 0.5) < 0.03;
+    return !octave;
+  });
+  const margin = runner ? (best.score - runner.score) / best.score : 1;
+  const confidence = Math.max(
+    0,
+    Math.min(1, 0.5 * margin + 0.35 * best.raw + 0.15 * best.regularity),
+  );
+
+  // Range sweep for multi-band scanning (used when caller doesn't restrict).
+  const rangeScores: { min: number; max: number; bpm: number; score: number }[] = [];
+  if (!opts.bpmRange) {
+    const ranges: [number, number][] = [
+      [70, 95],
+      [95, 115],
+      [115, 140],
+      [140, 180],
+      [180, 220],
+    ];
+    for (const [lo, hi] of ranges) {
+      let bestInRange: VampCandidate | null = null;
+      for (const c of candidates) {
+        if (c.bpm >= lo && c.bpm <= hi) {
+          if (!bestInRange || c.score > bestInRange.score) bestInRange = c;
+        }
+      }
+      if (bestInRange) rangeScores.push({ min: lo, max: hi, bpm: bestInRange.bpm, score: bestInRange.score });
+    }
+  }
+
+  return {
+    bpm: Math.round(refinedBpm * 100) / 100,
+    confidence: Math.round(confidence * 100) / 100,
+    candidates: candidates.slice(0, 8),
+    regularity: best.regularity,
+    rangeScores,
+  };
+}
