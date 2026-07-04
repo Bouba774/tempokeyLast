@@ -640,7 +640,45 @@ export function fuseBpm(
   // around the winning family and pick the pulse that best matches how a
   // DJ would count the beat (natural-pulse prior + reading-mass agreement).
   const mult = pickBestMultiplier(chosen.bpmDjWindow, cleaned);
-  const decidedBpm = mult.bpm;
+  let decidedBpm = mult.bpm;
+
+  // ------------------------------------------------------------------
+  // DiscDJ-compat octave & non-octave snap.
+  //
+  // The Vamp-compat reading is the closest thing we have to what DiscDJ
+  // itself would report. When it disagrees with our comb-based decision
+  // at a *non-octave* ratio (typically ×4/3 or ×3/2 on Afro / hip-hop /
+  // reggaeton), the comb filter is wrong — snap to Vamp. When the
+  // disagreement is a clean ×2 / ×½ octave that the DJ community prefers
+  // slower (~80–110 for hip-hop / dancehall), also snap to Vamp. This
+  // eliminates the systematic 100→150, 82→164, 91→121 mis-doubles.
+  // ------------------------------------------------------------------
+  const vampReading = cleaned.find((r) => r.algo === "VampCompat");
+  if (vampReading && vampReading.bpm > 0) {
+    const v = vampReading.bpm;
+    const ratio = decidedBpm / v;
+    const isOctave = (r: number) => Math.abs(r - 1) < 0.03 || Math.abs(r - 2) < 0.05 || Math.abs(r - 0.5) < 0.03;
+    const isTernary = (r: number) =>
+      Math.abs(r - 4 / 3) < 0.04 || Math.abs(r - 3 / 4) < 0.03 ||
+      Math.abs(r - 3 / 2) < 0.04 || Math.abs(r - 2 / 3) < 0.03 ||
+      Math.abs(r - 5 / 4) < 0.03 || Math.abs(r - 4 / 5) < 0.03;
+    if (isTernary(ratio) && vampReading.confidence >= 0.35) {
+      devLog("non-octave snap → Vamp", { was: +decidedBpm.toFixed(2), vamp: +v.toFixed(2), ratio: +ratio.toFixed(3) });
+      decidedBpm = v;
+    } else if (isOctave(ratio) && Math.abs(ratio - 1) > 0.05 && vampReading.confidence >= 0.5) {
+      // Octave disagreement + strong Vamp evidence → prefer the slower
+      // DJ-pulse Vamp reports (DiscDJ behaviour on dancehall / hip-hop).
+      const vampSlower = v < decidedBpm;
+      if (vampSlower && v >= 70) {
+        devLog("octave snap → slower Vamp", { was: +decidedBpm.toFixed(2), vamp: +v.toFixed(2) });
+        decidedBpm = v;
+      } else if (!vampSlower && v <= 175 && vampReading.confidence >= 0.6) {
+        devLog("octave snap → faster Vamp", { was: +decidedBpm.toFixed(2), vamp: +v.toFixed(2) });
+        decidedBpm = v;
+      }
+    }
+  }
+
   const finalBpm = snapBpm(decidedBpm, cleaned, familyKey(decidedBpm));
   devLog("multiplier decision", { base: +chosen.bpmDjWindow.toFixed(2), picked: +decidedBpm.toFixed(2), multiplier: mult.multiplier, score: +mult.score.toFixed(3) });
 
