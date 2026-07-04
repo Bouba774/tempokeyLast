@@ -12,7 +12,7 @@
 // Hip-Hop, Dancehall, Reggaeton, Pop, Live, Remix, Mashup).
 
 import { freeVectors, type EssentiaInstance, type EssentiaVector } from "./essentia-engine";
-import { estimateBPM } from "./bpm";
+import { estimateBPM, estimateBPMVampCompat, type VampEstimate } from "./bpm";
 
 const DJ_PREF_MIN = 85;
 const DJ_PREF_MAX = 175;
@@ -184,6 +184,58 @@ function vampFixedTempo(samples: Float32Array, sampleRate: number): { bpm: numbe
   }
 }
 
+/**
+ * Faithful Vamp FixedTempoEstimator (no comb filter, log-Gaussian prior at
+ * 120, multi-range sweep). This is the DiscDJ compatibility layer: the
+ * fusion engine treats its output as high-authority evidence and snaps
+ * the final BPM toward it when non-octave disagreement is detected.
+ */
+function vampCompat(samples: Float32Array, sampleRate: number): VampEstimate | null {
+  try {
+    const est = estimateBPMVampCompat(samples, sampleRate);
+    if (!est.bpm || !isFinite(est.bpm) || est.bpm <= 0) return null;
+    return est;
+  } catch (e) {
+    devLog("vampCompat failed:", e);
+    return null;
+  }
+}
+
+/**
+ * Multi-range Vamp sweep: run the DiscDJ-compat estimator with priors
+ * anchored to five overlapping BPM windows and pick the window whose peak
+ * is the strongest & most regular. Used as a second-pass when the fusion
+ * layer detects strong disagreement between algorithms.
+ */
+function vampMultiRange(samples: Float32Array, sampleRate: number): { bpm: number; score: number; regularity: number } | null {
+  const ranges: Array<[number, number, number]> = [
+    [70, 95, 82],
+    [95, 115, 105],
+    [115, 140, 128],
+    [140, 180, 155],
+    [180, 220, 195],
+  ];
+  let best: { bpm: number; score: number; regularity: number } | null = null;
+  for (const [lo, hi, pref] of ranges) {
+    try {
+      const est = estimateBPMVampCompat(samples, sampleRate, {
+        preferredBpm: pref,
+        sigma: 0.35,
+        bpmRange: [lo, hi],
+      });
+      if (!est.bpm || est.candidates.length === 0) continue;
+      const top = est.candidates[0];
+      const combined = top.score * (0.5 + 0.5 * top.regularity);
+      if (!best || combined > best.score) {
+        best = { bpm: est.bpm, score: combined, regularity: top.regularity };
+      }
+    } catch (e) {
+      devLog("vampMultiRange range failed:", lo, hi, e);
+    }
+  }
+  return best;
+}
+
 /** BPM derived directly from the median inter-beat interval of the ticks. */
 function bpmFromIntervals(intervals: number[]): { bpm: number; cv: number } | null {
   if (intervals.length < 4) return null;
@@ -303,6 +355,34 @@ export async function collectBpmReadings(
       confidence: vamp.confidence,
       weight: 1.5,
     });
+  }
+
+  // ---- Vamp FixedTempoEstimator (DiscDJ-faithful, no comb filter) --------
+  // High-authority reading: the fusion decision below snaps to this value
+  // when it disagrees with the comb-based candidate at a non-octave ratio
+  // (mirrors the systematic ×4/3, ×3/2 and ×2 mis-doubles observed
+  // between TempoKey and DiscDJ on Afro / hip-hop / reggaeton material).
+  await yieldTick();
+  const vampC = vampCompat(fullSamples, sampleRate);
+  if (vampC && vampC.bpm) {
+    readings.push({
+      algo: "VampCompat",
+      segment: "full",
+      bpm: vampC.bpm,
+      confidence: Math.max(0.25, vampC.confidence),
+      weight: 2.6,
+    });
+    // Feed the top alternate as a secondary observation so the fusion
+    // grouping sees the full DiscDJ candidate landscape.
+    for (const alt of vampC.candidates.slice(1, 3)) {
+      readings.push({
+        algo: "VampCompatAlt",
+        segment: "full",
+        bpm: alt.bpm,
+        confidence: Math.max(0.1, alt.score),
+        weight: 0.9,
+      });
+    }
   }
 
   // -------- Segments --------------------------------------------------------
