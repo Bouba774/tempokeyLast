@@ -457,11 +457,15 @@ function suppressOutliers(readings: BpmReading[]): BpmReading[] {
  * correctness always wins when the evidence is strong.
  */
 function djNaturalness(bpmDjWindow: number): number {
+  // Log-Gaussian centred at 120 BPM with σ = 0.9 — the exact soft prior
+  // used by the Vamp FixedTempoEstimator that DiscDJ relies on. Symmetric
+  // in the half/double sense, so it never pushes a stable slow track to
+  // its double just because the "DJ window" was narrow.
   const b = bpmDjWindow;
-  if (b >= DJ_NATURAL_MIN && b <= DJ_NATURAL_MAX) return 1;
-  if (b >= 80 && b <= 165) return 0.9;
-  if (b >= DJ_PREF_MIN && b <= DJ_PREF_MAX) return 0.8;
-  return 0.65;
+  if (b <= 0) return 0.5;
+  const logDist = Math.log(b / 120);
+  const g = Math.exp(-0.5 * (logDist / 0.9) * (logDist / 0.9));
+  return 0.6 + 0.4 * g;
 }
 
 /**
