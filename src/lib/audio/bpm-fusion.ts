@@ -12,9 +12,18 @@
 // Hip-Hop, Dancehall, Reggaeton, Pop, Live, Remix, Mashup).
 
 import { freeVectors, type EssentiaInstance, type EssentiaVector } from "./essentia-engine";
+import { estimateBPM } from "./bpm";
 
 const DJ_PREF_MIN = 85;
 const DJ_PREF_MAX = 175;
+// "Natural DJ pulse" — the sweet spot most DJ apps (DiscDJ, Rekordbox,
+// Serato, VirtualDJ) prefer when several octave interpretations of the
+// tempo are equally plausible. Used as a soft prior, never as a hard rule.
+const DJ_NATURAL_MIN = 95;
+const DJ_NATURAL_MAX = 145;
+// Explicit multipliers evaluated for every top candidate — mirrors the
+// half / double / dotted / triplet interpretations a DJ would consider.
+const CANDIDATE_MULTIPLIERS = [0.5, 2 / 3, 0.75, 1, 1.25, 1.5, 2] as const;
 const DEV_LOG =
   typeof window !== "undefined" &&
   ((window as unknown as { __TEMPOKEY_DEBUG_BPM__?: boolean }).__TEMPOKEY_DEBUG_BPM__ === true ||
@@ -157,6 +166,24 @@ function loopBpm(essentia: EssentiaInstance, samples: Float32Array): number | nu
   }
 }
 
+/**
+ * Vamp-like Fixed Tempo Estimator: autocorrelation of a multi-band
+ * spectral-flux onset envelope with a 4-harmonic comb filter. This is
+ * an independent, non-Essentia estimator that gives DiscDJ-style stable
+ * tempi on Afrobeats / Amapiano / Dancehall / Reggaeton where beat
+ * trackers often halve or double the tempo.
+ */
+function vampFixedTempo(samples: Float32Array, sampleRate: number): { bpm: number; confidence: number } | null {
+  try {
+    const est = estimateBPM(samples, sampleRate);
+    if (!est.bpm || !isFinite(est.bpm) || est.bpm <= 0) return null;
+    return { bpm: est.bpm, confidence: Math.max(0.15, Math.min(1, est.confidence)) };
+  } catch (e) {
+    devLog("vampFixedTempo failed:", e);
+    return null;
+  }
+}
+
 /** BPM derived directly from the median inter-beat interval of the ticks. */
 function bpmFromIntervals(intervals: number[]): { bpm: number; cv: number } | null {
   if (intervals.length < 4) return null;
@@ -265,6 +292,19 @@ export async function collectBpmReadings(
     });
   }
 
+  // ---- Vamp-like Fixed Tempo Estimator (autocorrelation + comb) -----------
+  await yieldTick();
+  const vamp = vampFixedTempo(fullSamples, sampleRate);
+  if (vamp) {
+    readings.push({
+      algo: "VampFixedTempo",
+      segment: "full",
+      bpm: vamp.bpm,
+      confidence: vamp.confidence,
+      weight: 1.5,
+    });
+  }
+
   // -------- Segments --------------------------------------------------------
   const segs = pickBpmSegments(fullSamples, sampleRate, 30);
   for (const seg of segs) {
@@ -297,6 +337,84 @@ export async function collectBpmReadings(
 
   devLog(`collected ${readings.length} readings`, readings.map((r) => ({ a: r.algo, s: r.segment, b: +r.bpm.toFixed(2), c: +r.confidence.toFixed(2) })));
   return { readings, fullRhythm };
+}
+
+/**
+ * Cross-validation: down-weight readings that strongly disagree with the
+ * consensus (median of DJ-window projections). An engine that lands alone
+ * in a distant tempo family should not be able to drive the final result.
+ */
+function suppressOutliers(readings: BpmReading[]): BpmReading[] {
+  if (readings.length < 3) return readings;
+  const projected = readings.map((r) => toDjWindow(r.bpm)).sort((a, b) => a - b);
+  const median = projected[Math.floor(projected.length / 2)];
+  if (!isFinite(median) || median <= 0) return readings;
+  return readings.map((r) => {
+    const dj = toDjWindow(r.bpm);
+    // Ratio-based deviation, tolerating the ×0.5/×2 octave siblings the
+    // grouping step already handles.
+    const ratio = dj / median;
+    const octaveAligned =
+      Math.min(
+        Math.abs(Math.log2(ratio)),
+        Math.abs(Math.log2(ratio * 2)),
+        Math.abs(Math.log2(ratio / 2)),
+      ) < 0.08;
+    if (octaveAligned) return r;
+    const dev = Math.abs(dj - median) / median;
+    if (dev > 0.15) {
+      const damped = { ...r, weight: r.weight * 0.35, confidence: r.confidence * 0.7 };
+      devLog("outlier damped", { algo: r.algo, segment: r.segment, bpm: +r.bpm.toFixed(2), dev: +dev.toFixed(3) });
+      return damped;
+    }
+    return r;
+  });
+}
+
+/**
+ * DJ-naturalness prior: peak value inside [95, 145], smoothly falling off
+ * outside. Never zero — this is a *soft* preference, so mathematical
+ * correctness always wins when the evidence is strong.
+ */
+function djNaturalness(bpmDjWindow: number): number {
+  const b = bpmDjWindow;
+  if (b >= DJ_NATURAL_MIN && b <= DJ_NATURAL_MAX) return 1;
+  if (b >= 80 && b <= 165) return 0.9;
+  if (b >= DJ_PREF_MIN && b <= DJ_PREF_MAX) return 0.8;
+  return 0.65;
+}
+
+/**
+ * Evaluate the explicit set of multipliers (÷2, ×2/3, ×0.75, ×1, ×1.25,
+ * ×1.5, ×2) for each top-ranked family. For every multiplied candidate we
+ * count how much *reading mass* (weight × confidence × stability) falls
+ * within ±2 % of it, then combine that with the DJ-naturalness prior.
+ * The winner is not necessarily the raw mathematical BPM but the one that
+ * best matches how a DJ would count the pulse — the same behaviour DiscDJ
+ * exhibits on ternary or half-time material.
+ */
+function pickBestMultiplier(baseBpmDjWindow: number, readings: BpmReading[]): { bpm: number; score: number; multiplier: number } {
+  let best = { bpm: baseBpmDjWindow, score: -Infinity, multiplier: 1 };
+  for (const m of CANDIDATE_MULTIPLIERS) {
+    const cand = toDjWindow(baseBpmDjWindow * m);
+    if (!isFinite(cand) || cand <= 0) continue;
+    let mass = 0;
+    for (const r of readings) {
+      const rDj = toDjWindow(r.bpm);
+      // Match on any octave-equivalent projection.
+      const ratios = [rDj / cand, (rDj * 2) / cand, rDj / (cand * 2)];
+      const near = ratios.some((x) => Math.abs(x - 1) < 0.02);
+      if (!near) continue;
+      const stability = r.intervalsCv != null ? 1 - Math.min(0.6, r.intervalsCv) : 0.7;
+      mass += r.weight * (0.4 + 0.6 * r.confidence) * (0.5 + 0.5 * stability);
+    }
+    // Slight preference for staying on ×1 to avoid needless multiplier flips
+    // when the evidence is a tie.
+    const anchorBonus = m === 1 ? 1.05 : 1;
+    const score = mass * djNaturalness(cand) * anchorBonus;
+    if (score > best.score) best = { bpm: cand, score, multiplier: m };
+  }
+  return best;
 }
 
 interface Group {
@@ -413,7 +531,8 @@ export function fuseBpm(
   fullRhythm: RhythmOut | null,
 ): BpmFusionResult | null {
   if (readings.length === 0) return null;
-  const groups = groupReadings(readings);
+  const cleaned = suppressOutliers(readings);
+  const groups = groupReadings(cleaned);
   const ranked = rankGroups(groups);
   if (ranked.length === 0) return null;
 
@@ -437,12 +556,18 @@ export function fuseBpm(
     switched = true;
   }
 
-  const finalBpm = snapBpm(chosen.bpmDjWindow, readings, chosen.key);
+  // DJ-oriented multiplier decision: re-evaluate ×0.5..×2 candidates
+  // around the winning family and pick the pulse that best matches how a
+  // DJ would count the beat (natural-pulse prior + reading-mass agreement).
+  const mult = pickBestMultiplier(chosen.bpmDjWindow, cleaned);
+  const decidedBpm = mult.bpm;
+  const finalBpm = snapBpm(decidedBpm, cleaned, familyKey(decidedBpm));
+  devLog("multiplier decision", { base: +chosen.bpmDjWindow.toFixed(2), picked: +decidedBpm.toFixed(2), multiplier: mult.multiplier, score: +mult.score.toFixed(3) });
 
   // Robust confidence: blend algorithm agreement, average per-reading
   // confidence, beat-grid stability, and segment coherence.
-  const totalAlgos = new Set(readings.map((r) => r.algo)).size;
-  const totalSegments = new Set(readings.map((r) => r.segment)).size;
+  const totalAlgos = new Set(cleaned.map((r) => r.algo)).size;
+  const totalSegments = new Set(cleaned.map((r) => r.segment)).size;
   const agreement = chosen.algos.size / Math.max(1, totalAlgos);
   const coverage = chosen.segments.size / Math.max(1, totalSegments);
   const avgConf = chosen.confSum / Math.max(1, chosen.count);
@@ -471,6 +596,8 @@ export function fuseBpm(
     switched,
     candidates,
     chosen: { key: chosen.key, algos: [...chosen.algos], segments: [...chosen.segments], score: chosen.totalScore },
+    multiplier: mult.multiplier,
+    readings: cleaned.map((r) => ({ a: r.algo, s: r.segment, b: +r.bpm.toFixed(2), c: +r.confidence.toFixed(2), w: +r.weight.toFixed(2) })),
   });
 
   return {
