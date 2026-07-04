@@ -735,5 +735,39 @@ export async function analyzeBpmFusion(
   sampleRate: number,
 ): Promise<BpmFusionResult | null> {
   const { readings, fullRhythm } = await collectBpmReadings(essentia, fullSamples, sampleRate);
-  return fuseBpm(readings, fullRhythm);
+  const first = fuseBpm(readings, fullRhythm);
+  if (!first) return null;
+
+  // Disagreement detector: if the top-2 candidate families are within a
+  // non-octave ratio (e.g. 100 vs 133 → ×4/3) AND the winning confidence
+  // is only modest, run a second-pass multi-range Vamp sweep to arbitrate.
+  const top = first.candidates[0];
+  const runner = first.candidates[1];
+  if (top && runner && first.confidence < 0.75) {
+    const ratio = Math.max(top.bpm, runner.bpm) / Math.min(top.bpm, runner.bpm);
+    const octave =
+      Math.abs(ratio - 1) < 0.03 || Math.abs(ratio - 2) < 0.06 || Math.abs(ratio - 0.5) < 0.03;
+    if (!octave && ratio < 2.1) {
+      await new Promise<void>((r) => setTimeout(r, 0));
+      const sweep = vampMultiRange(fullSamples, sampleRate);
+      if (sweep && sweep.regularity > 0.15) {
+        // Snap final BPM to the sweep winner when it's close to any top-3
+        // family (avoids picking a completely unrelated tempo).
+        const near = first.candidates.slice(0, 3).find((c) => {
+          const r = sweep.bpm / c.bpm;
+          return Math.abs(r - 1) < 0.04 || Math.abs(r - 2) < 0.05 || Math.abs(r - 0.5) < 0.03;
+        });
+        if (near) {
+          const finalBpm = Math.round(sweep.bpm * 100) / 100;
+          devLog("second-pass multi-range snap", { was: first.bpm, sweep: finalBpm, score: sweep.score });
+          return {
+            ...first,
+            bpm: finalBpm,
+            chosen: { ...first.chosen, bpm: finalBpm },
+          };
+        }
+      }
+    }
+  }
+  return first;
 }
