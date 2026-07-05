@@ -24,15 +24,17 @@ const DJ_NATURAL_MAX = 145;
 // Explicit multipliers evaluated for every top candidate — mirrors the
 // half / double / dotted / triplet interpretations a DJ would consider.
 const CANDIDATE_MULTIPLIERS = [0.5, 2 / 3, 0.75, 1, 1.25, 1.5, 2] as const;
-const DEV_LOG =
-  typeof window !== "undefined" &&
-  ((window as unknown as { __TEMPOKEY_DEBUG_BPM__?: boolean }).__TEMPOKEY_DEBUG_BPM__ === true ||
-    (typeof import.meta !== "undefined" && (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true));
-
+// AUDIT MODE: fusion logs are enabled unconditionally so we can prove on
+// device (production APK / Android WebView) which engine runs and which
+// candidate wins. Set `window.__TEMPOKEY_DEBUG_BPM__ = false` at runtime
+// to silence them once the audit is complete.
 function devLog(...args: unknown[]): void {
-  if (!DEV_LOG) return;
+  if (typeof window !== "undefined") {
+    const flag = (window as unknown as { __TEMPOKEY_DEBUG_BPM__?: boolean }).__TEMPOKEY_DEBUG_BPM__;
+    if (flag === false) return;
+  }
   // eslint-disable-next-line no-console
-  console.log("[bpm-fusion]", ...args);
+  console.info("[bpm-fusion]", ...args);
 }
 
 export interface BpmReading {
