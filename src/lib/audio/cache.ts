@@ -16,7 +16,13 @@ export interface TrackAnalysis {
 
 // Bump the store name whenever the analysis algorithm changes so that
 // existing libraries are transparently re-analysed with the new engine.
-const store = createStore("tempokey-analysis-v6-fusion", "cache");
+// v7-audit: VampCompat + new fusion + octave snap + multi-range sweep.
+// Any track cached under an older store is invisible to this build, which
+// forces the new engine to run and its logs to appear.
+const CACHE_STORE_VERSION = "tempokey-analysis-v7-audit";
+const store = createStore(CACHE_STORE_VERSION, "cache");
+
+export const CACHE_VERSION = CACHE_STORE_VERSION;
 
 export async function getCachedAnalysis(fileHash: string): Promise<TrackAnalysis | null> {
   try {
