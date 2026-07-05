@@ -12,6 +12,17 @@ import {
 } from "./preprocess";
 import { getEssentia, freeVectors, type EssentiaInstance } from "./essentia-engine";
 import { analyzeBpmFusion } from "./bpm-fusion";
+import { CACHE_VERSION } from "./cache";
+
+// ---------------------------------------------------------------------------
+// Audit logging. Emitted unconditionally (info level) so we can confirm on
+// device (Android WebView / production APK) which engine actually runs for
+// each track. Prefix `[tempokey/bpm-audit]` — grep for it in `adb logcat`.
+// ---------------------------------------------------------------------------
+function auditLog(event: string, data: Record<string, unknown>): void {
+  // eslint-disable-next-line no-console
+  console.info(`[tempokey/bpm-audit] ${event}`, { cache: CACHE_VERSION, ...data });
+}
 
 let ctx: AudioContext | null = null;
 function getCtx(): AudioContext {
@@ -218,8 +229,18 @@ export async function analyzeFile(
   const fileHash = await hashFile(file);
   if (!options.force) {
     const cached = await getCachedAnalysis(fileHash);
-    if (cached) return cached;
+    if (cached) {
+      auditLog("cache-hit", {
+        file: file.name,
+        hash: fileHash.slice(0, 12),
+        bpm: cached.bpm,
+        key: cached.key,
+        analyzedAt: cached.analyzedAt,
+      });
+      return cached;
+    }
   }
+  auditLog("cache-miss", { file: file.name, hash: fileHash.slice(0, 12), force: !!options.force });
 
   const buf = await file.arrayBuffer();
   const audio = await decode(getCtx(), buf);
@@ -263,6 +284,10 @@ export async function analyzeFile(
   }
 
   if (!usedEssentia) {
+    auditLog("engine-fallback-pureJS", {
+      file: file.name,
+      reason: "Essentia unavailable or analyzeWithEssentia returned null — VampCompat/fusion NOT applied",
+    });
     // Pure-JS fallback (preserves backward compatibility).
     await new Promise<void>((r) => setTimeout(r, 0));
     const { bpmRes, keyRes } = fallbackAnalysis(trimmed, sr);
@@ -272,6 +297,14 @@ export async function analyzeFile(
     keyLabel = keyRes?.label ?? null;
     keyConfidence = keyRes?.confidence ?? null;
     camelot = keyRes ? toCamelot(keyRes) : null;
+  } else {
+    auditLog("engine-essentia-fusion", {
+      file: file.name,
+      finalBpm: bpm,
+      bpmConfidence,
+      key: keyLabel,
+      candidates: bpmCandidates.slice(0, 5),
+    });
   }
 
   const suspect =
@@ -290,5 +323,11 @@ export async function analyzeFile(
     analyzedAt: Date.now(),
   };
   await setCachedAnalysis(result);
+  auditLog("stored", {
+    file: file.name,
+    hash: fileHash.slice(0, 12),
+    finalBpm: result.bpm,
+    engine: usedEssentia ? "essentia-fusion" : "pureJS-fallback",
+  });
   return result;
 }
