@@ -13,6 +13,9 @@ import {
 import { getEssentia, freeVectors, type EssentiaInstance } from "./essentia-engine";
 import { analyzeBpmFusion } from "./bpm-fusion";
 import { CACHE_VERSION } from "./cache";
+// Side-effect import: registers `window.tempokeyDebugBpm(file)` for the
+// BPM audit console workflow. Zero runtime cost until called.
+import "./bpm-debug";
 
 // ---------------------------------------------------------------------------
 // Audit logging. Emitted unconditionally (info level) so we can confirm on
