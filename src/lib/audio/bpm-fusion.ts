@@ -172,6 +172,30 @@ function loopBpm(essentia: EssentiaInstance, samples: Float32Array): number | nu
   }
 }
 
+function tempoCnn(essentia: EssentiaInstance, samples: Float32Array): { bpm: number; confidence: number } | null {
+  // TempoCNN is not exposed by every essentia.js bundle. When present, keep it
+  // in the same voting layer as the other Essentia estimators; otherwise this
+  // remains a silent no-op and the existing pipeline is unchanged.
+  const dyn = essentia as unknown as {
+    TempoCNN?: (s: EssentiaVector) => { bpm?: number; tempo?: number; confidence?: number };
+  };
+  if (typeof dyn.TempoCNN !== "function") return null;
+  const buf = new Float32Array(samples.length);
+  buf.set(samples);
+  const vec = essentia.arrayToVector(buf);
+  try {
+    const out = dyn.TempoCNN(vec);
+    const bpm = typeof out.bpm === "number" ? out.bpm : out.tempo;
+    if (!bpm || !isFinite(bpm) || bpm <= 0) return null;
+    return { bpm, confidence: Math.max(0.2, Math.min(1, out.confidence ?? 0.75)) };
+  } catch (e) {
+    devLog("TempoCNN failed:", e);
+    return null;
+  } finally {
+    freeVectors(vec);
+  }
+}
+
 /**
  * Vamp-like Fixed Tempo Estimator: autocorrelation of a multi-band
  * spectral-flux onset envelope with a 4-harmonic comb filter. This is
@@ -352,6 +376,18 @@ export async function collectBpmReadings(
       bpm: fullLoop,
       confidence: 0.65,
       weight: 1.1,
+    });
+  }
+
+  await yieldTick();
+  const fullTempoCnn = tempoCnn(essentia, fullSamples);
+  if (fullTempoCnn) {
+    readings.push({
+      algo: "TempoCNN",
+      segment: "full",
+      bpm: fullTempoCnn.bpm,
+      confidence: fullTempoCnn.confidence,
+      weight: 1.5,
     });
   }
 
