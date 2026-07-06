@@ -64,6 +64,7 @@ function applyAnalysisResult(
     keyLocked: wasLockedKey,
     willOverwriteBpm: !wasLockedBpm,
     engineCandidates: res.bpmCandidates?.slice(0, 4),
+    bpmDebug: res.bpmDebug,
   });
 
   const detected: NonNullable<Track["detected"]> = {
@@ -74,6 +75,7 @@ function applyAnalysisResult(
     keyConfidence: res.keyConfidence,
     suspect: res.suspect,
     detectedAt: res.analyzedAt,
+    bpmDebug: res.bpmDebug ?? null,
   };
 
   const patch: Partial<Track> = {
@@ -84,6 +86,7 @@ function applyAnalysisResult(
     status: "done",
     error: null,
     detected,
+    bpmDebug: res.bpmDebug ?? null,
     suspect: res.suspect,
   };
 

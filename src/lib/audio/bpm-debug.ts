@@ -77,6 +77,19 @@ export async function debugBpm(file: File): Promise<BpmDebugReport> {
     } catch (e) {
       engines.PercivalBpmEstimator = { error: String(e) };
     }
+    try {
+      const dyn = essentia as unknown as {
+        TempoCNN?: (s: EssentiaVector) => { bpm?: number; tempo?: number; confidence?: number };
+      };
+      if (typeof dyn.TempoCNN === "function") {
+        const t = dyn.TempoCNN(vec);
+        engines.TempoCNN = { bpm: t.bpm ?? t.tempo ?? null, confidence: t.confidence ?? null };
+      } else {
+        engines.TempoCNN = { available: false };
+      }
+    } catch (e) {
+      engines.TempoCNN = { error: String(e) };
+    }
     freeVectors(vec);
 
     // Full fusion
