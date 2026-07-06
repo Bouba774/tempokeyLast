@@ -308,6 +308,10 @@ export async function analyzeFile(
         hash: fileHash.slice(0, 12),
         bpm: cached.bpm,
         key: cached.key,
+        engine: cached.bpmDebug?.engineUsed ?? "unknown-cached-analysis",
+        finalEngine: cached.bpmDebug?.finalEngine ?? "unknown",
+        reason: cached.bpmDebug?.reason ?? "Ancienne entrée de cache sans diagnostic BPM détaillé.",
+        candidates: cached.bpmDebug?.candidates?.slice(0, 5) ?? cached.bpmCandidates?.slice(0, 5),
         analyzedAt: cached.analyzedAt,
       });
       return cached;
