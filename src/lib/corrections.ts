@@ -48,6 +48,7 @@ function captureDetectedIfMissing(t: Track): NonNullable<Track["detected"]> {
     keyConfidence: t.keyConfidence ?? null,
     suspect: t.suspect ?? false,
     detectedAt: Date.now(),
+    bpmDebug: t.bpmDebug ?? null,
   };
 }
 

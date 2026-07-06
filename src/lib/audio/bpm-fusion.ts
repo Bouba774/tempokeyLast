@@ -54,6 +54,10 @@ export interface BpmFusionResult {
   chosen: { bpm: number; score: number; count: number };
   validated: boolean;
   switchedToRunnerUp: boolean;
+  finalEngine: string;
+  decisionReason: string;
+  secondPassApplied: boolean;
+  rangeScores: { min: number; max: number; bpm: number; score: number }[];
 }
 
 /** Coefficient of variation of an interval sequence (lower = steadier). */
@@ -292,8 +296,13 @@ export async function collectBpmReadings(
   essentia: EssentiaInstance,
   fullSamples: Float32Array,
   sampleRate: number,
-): Promise<{ readings: BpmReading[]; fullRhythm: RhythmOut | null }> {
+): Promise<{
+  readings: BpmReading[];
+  fullRhythm: RhythmOut | null;
+  rangeScores: { min: number; max: number; bpm: number; score: number }[];
+}> {
   const readings: BpmReading[] = [];
+  let rangeScores: { min: number; max: number; bpm: number; score: number }[] = [];
   const yieldTick = () => new Promise<void>((r) => setTimeout(r, 0));
 
   // -------- Full track ------------------------------------------------------
@@ -367,6 +376,12 @@ export async function collectBpmReadings(
   await yieldTick();
   const vampC = vampCompat(fullSamples, sampleRate);
   if (vampC && vampC.bpm) {
+    rangeScores = vampC.rangeScores.map((s) => ({
+      min: s.min,
+      max: s.max,
+      bpm: Math.round(s.bpm * 100) / 100,
+      score: Math.round(s.score * 1000) / 1000,
+    }));
     readings.push({
       algo: "VampCompat",
       segment: "full",
@@ -418,7 +433,7 @@ export async function collectBpmReadings(
   }
 
   devLog(`collected ${readings.length} readings`, readings.map((r) => ({ a: r.algo, s: r.segment, b: +r.bpm.toFixed(2), c: +r.confidence.toFixed(2) })));
-  return { readings, fullRhythm };
+  return { readings, fullRhythm, rangeScores };
 }
 
 /**
@@ -615,6 +630,7 @@ function snapBpm(bpmDjWindow: number, readings: BpmReading[], key: string): numb
 export function fuseBpm(
   readings: BpmReading[],
   fullRhythm: RhythmOut | null,
+  rangeScores: { min: number; max: number; bpm: number; score: number }[] = [],
 ): BpmFusionResult | null {
   if (readings.length === 0) return null;
   const cleaned = suppressOutliers(readings);
@@ -624,12 +640,15 @@ export function fuseBpm(
 
   let chosen = ranked[0];
   const runner = ranked[1];
+  let finalEngine = "WeightedFusion";
+  let decisionReason = `Vote pondéré: ${[...chosen.algos].join(" + ")} (${chosen.count} lectures).`;
 
   // Tie-break very close candidates by algorithm agreement count.
   if (runner && runner.totalScore / chosen.totalScore > 0.92) {
     if (runner.algos.size > chosen.algos.size) {
       devLog("tie-break: runner has more algos, swapping", { chosen: chosen.key, runner: runner.key });
       chosen = runner;
+      decisionReason = `Départage: plus de moteurs convergent vers ${chosen.key} BPM.`;
     }
   }
 
@@ -640,6 +659,7 @@ export function fuseBpm(
     chosen = runner;
     validated = validateAgainstTicks(chosen.bpmDjWindow, fullRhythm);
     switched = true;
+    decisionReason = `Validation rythmique: le premier candidat a échoué, bascule vers ${chosen.key} BPM.`;
   }
 
   // DJ-oriented multiplier decision: re-evaluate ×0.5..×2 candidates
@@ -671,6 +691,8 @@ export function fuseBpm(
     if (isTernary(ratio) && vampReading.confidence >= 0.35) {
       devLog("non-octave snap → Vamp", { was: +decidedBpm.toFixed(2), vamp: +v.toFixed(2), ratio: +ratio.toFixed(3) });
       decidedBpm = v;
+      finalEngine = "VampCompat";
+      decisionReason = `Compat DiscDJ: désaccord non-octave (${ratio.toFixed(2)}×), préférence VampCompat.`;
     } else if (isOctave(ratio) && Math.abs(ratio - 1) > 0.05 && vampReading.confidence >= 0.5) {
       // Octave disagreement + strong Vamp evidence → prefer the slower
       // DJ-pulse Vamp reports (DiscDJ behaviour on dancehall / hip-hop).
@@ -678,9 +700,13 @@ export function fuseBpm(
       if (vampSlower && v >= 70) {
         devLog("octave snap → slower Vamp", { was: +decidedBpm.toFixed(2), vamp: +v.toFixed(2) });
         decidedBpm = v;
+        finalEngine = "VampCompat";
+        decisionReason = "Compat DiscDJ: résolution d'octave vers le pulse DJ plus lent de VampCompat.";
       } else if (!vampSlower && v <= 175 && vampReading.confidence >= 0.6) {
         devLog("octave snap → faster Vamp", { was: +decidedBpm.toFixed(2), vamp: +v.toFixed(2) });
         decidedBpm = v;
+        finalEngine = "VampCompat";
+        decisionReason = "Compat DiscDJ: résolution d'octave vers le pulse DJ plus rapide de VampCompat.";
       }
     }
   }
@@ -720,6 +746,8 @@ export function fuseBpm(
     switched,
     candidates,
     chosen: { key: chosen.key, algos: [...chosen.algos], segments: [...chosen.segments], score: chosen.totalScore },
+    finalEngine,
+    reason: decisionReason,
     multiplier: mult.multiplier,
     readings: cleaned.map((r) => ({ a: r.algo, s: r.segment, b: +r.bpm.toFixed(2), c: +r.confidence.toFixed(2), w: +r.weight.toFixed(2) })),
   });
@@ -732,6 +760,10 @@ export function fuseBpm(
     chosen: { bpm: finalBpm, score: chosen.totalScore, count: chosen.count },
     validated,
     switchedToRunnerUp: switched,
+    finalEngine,
+    decisionReason,
+    secondPassApplied: false,
+    rangeScores,
   };
 }
 
@@ -740,8 +772,8 @@ export async function analyzeBpmFusion(
   fullSamples: Float32Array,
   sampleRate: number,
 ): Promise<BpmFusionResult | null> {
-  const { readings, fullRhythm } = await collectBpmReadings(essentia, fullSamples, sampleRate);
-  const first = fuseBpm(readings, fullRhythm);
+  const { readings, fullRhythm, rangeScores } = await collectBpmReadings(essentia, fullSamples, sampleRate);
+  const first = fuseBpm(readings, fullRhythm, rangeScores);
   if (!first) return null;
 
   // Disagreement detector: if the top-2 candidate families are within a
@@ -770,6 +802,9 @@ export async function analyzeBpmFusion(
             ...first,
             bpm: finalBpm,
             chosen: { ...first.chosen, bpm: finalBpm },
+            finalEngine: "VampCompatMultiRange",
+            decisionReason: `Seconde analyse multi-plages: fenêtre ${finalBpm} BPM retenue après désaccord moteur.`,
+            secondPassApplied: true,
           };
         }
       }
