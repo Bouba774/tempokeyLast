@@ -387,6 +387,26 @@ function Home() {
           </p>
 
           <div className="mt-6 w-full max-w-[min(100%,340px)] space-y-3">
+            <label
+              className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-[var(--surface-elevated)] px-4 py-3 text-left"
+              style={{ boxShadow: "var(--shadow-card)" }}
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-foreground">
+                  Mode MixOrder
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                  {mixOrderEnabled
+                    ? "Après l'import, ouverture de la page MixOrder."
+                    : "Désactivé — TempoKey s'ouvre normalement après l'import."}
+                </span>
+              </span>
+              <Switch
+                checked={mixOrderEnabled}
+                onCheckedChange={(v) => setMixOrderEnabled(!!v)}
+                aria-label="Activer le mode MixOrder"
+              />
+            </label>
             <button
               onClick={pickFolder}
               className="press shine relative flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-2xl text-[clamp(13px,3.6vw,15px)] font-semibold text-[var(--primary-foreground)] animate-fade-in"
