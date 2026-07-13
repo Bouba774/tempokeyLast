@@ -1,0 +1,21 @@
+{
+  "name": "mixorder-discdj-robot",
+  "version": "0.1.0",
+  "description": "Local Capacitor plugin: drive DiscDJ (read BPM text, tap Next) via an Android AccessibilityService.",
+  "main": "src/index.js",
+  "module": "src/index.js",
+  "types": "src/index.d.ts",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "src/"
+  ],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=6.0.0"
+  }
+}
