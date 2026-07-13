@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
-import type { BpmDebugInfo } from "./audio/cache";
 
 export const AUDIO_EXTENSIONS = [
   "mp3",
@@ -29,7 +28,6 @@ export interface DetectedSnapshot {
   keyConfidence: number | null;
   suspect: boolean;
   detectedAt: number;
-  bpmDebug?: BpmDebugInfo | null;
 }
 
 export interface Track {
@@ -55,7 +53,6 @@ export interface Track {
   keyLocked?: boolean;
   suspect?: boolean;
   detected?: DetectedSnapshot | null; // original auto-detected values
-  bpmDebug?: BpmDebugInfo | null;
   correctedAt?: number | null;
 }
 

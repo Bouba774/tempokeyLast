@@ -50,23 +50,6 @@ function applyAnalysisResult(
   const wasLockedBpm = t.bpmLocked === true && t.bpm != null;
   const wasLockedKey = t.keyLocked === true && t.camelot != null;
 
-  // Audit: signal explicitly when a manual lock prevents the new engine
-  // from overwriting the displayed BPM. Grep `[tempokey/bpm-audit]` in
-  // `adb logcat` — this is the third possible reason a "reanalysis"
-  // appears to give the same result as before.
-  // eslint-disable-next-line no-console
-  console.info("[tempokey/bpm-audit] apply", {
-    track: t.title,
-    previousBpm: t.bpm,
-    detectedBpm: res.bpm,
-    bpmConfidence: res.bpmConfidence,
-    bpmLocked: wasLockedBpm,
-    keyLocked: wasLockedKey,
-    willOverwriteBpm: !wasLockedBpm,
-    engineCandidates: res.bpmCandidates?.slice(0, 4),
-    bpmDebug: res.bpmDebug,
-  });
-
   const detected: NonNullable<Track["detected"]> = {
     bpm: res.bpm,
     key: res.key,
@@ -75,7 +58,6 @@ function applyAnalysisResult(
     keyConfidence: res.keyConfidence,
     suspect: res.suspect,
     detectedAt: res.analyzedAt,
-    bpmDebug: res.bpmDebug ?? null,
   };
 
   const patch: Partial<Track> = {
@@ -86,7 +68,6 @@ function applyAnalysisResult(
     status: "done",
     error: null,
     detected,
-    bpmDebug: res.bpmDebug ?? null,
     suspect: res.suspect,
   };
 

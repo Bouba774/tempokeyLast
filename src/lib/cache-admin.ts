@@ -1,8 +1,7 @@
 import { createStore, keys as idbKeys, clear as idbClear, del as idbDel } from "idb-keyval";
 import { useLibraryStore } from "@/lib/library-store";
-import { CACHE_VERSION } from "@/lib/audio/cache";
 
-const analysisStore = createStore(CACHE_VERSION, "cache");
+const analysisStore = createStore("tempokey-analysis", "cache");
 const waveformStore = createStore("tempokey-waveform", "peaks");
 
 export interface CacheStats {

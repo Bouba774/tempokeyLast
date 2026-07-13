@@ -89,11 +89,8 @@ export function TrackDetailSheet({
   const bpmTone = confidenceTone(bpmConf);
   const keyTone = confidenceTone(keyConf);
   const detected = track.detected ?? null;
-  const bpmDebug = detected?.bpmDebug ?? track.bpmDebug ?? null;
   const bpmChanged = detected && detected.bpm != null && track.bpm !== detected.bpm;
   const keyChanged = detected && detected.camelot && track.camelot !== detected.camelot;
-  const debugCandidates = bpmDebug?.candidates.slice(0, 4) ?? [];
-  const debugReadings = bpmDebug?.readings.slice(0, 6) ?? [];
 
   function commitBpm() {
     const n = parseFloat(bpmDraft.replace(",", "."));
@@ -229,62 +226,6 @@ export function TrackDetailSheet({
             </div>
           )}
         </section>
-
-        {bpmDebug && (
-          <section className="mt-3 rounded-xl border border-border bg-card p-3">
-            <header className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Debug BPM
-              </span>
-              <span className="rounded-full bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                {bpmDebug.fallback ? "Fallback" : bpmDebug.finalEngine}
-              </span>
-            </header>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-lg bg-[var(--surface-elevated)] p-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Moteur</div>
-                <div className="mt-0.5 truncate text-[11px] font-semibold">{bpmDebug.engineUsed}</div>
-              </div>
-              <div className="rounded-lg bg-[var(--surface-elevated)] p-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Final</div>
-                <div className="mt-0.5 text-sm font-semibold tabular-nums">{bpmDebug.finalBpm ?? "—"}</div>
-              </div>
-              <div className="rounded-lg bg-[var(--surface-elevated)] p-2">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Cache</div>
-                <div className="mt-0.5 truncate text-[11px] font-semibold">{bpmDebug.cacheVersion.replace("tempokey-analysis-", "")}</div>
-              </div>
-            </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              {bpmDebug.reason}
-            </p>
-            {debugCandidates.length > 0 && (
-              <div className="mt-2 space-y-1">
-                {debugCandidates.map((c, i) => (
-                  <div
-                    key={`${c.engine}-${c.bpm}-${i}`}
-                    className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-md bg-[var(--surface-elevated)] px-2 py-1 text-[11px]"
-                  >
-                    <span className="truncate text-muted-foreground">{c.engine}</span>
-                    <span className="font-semibold tabular-nums text-foreground">{c.bpm}</span>
-                    <span className="tabular-nums text-muted-foreground">{c.score.toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {debugReadings.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {debugReadings.map((r, i) => (
-                  <span
-                    key={`${r.engine}-${r.segment}-${r.bpm}-${i}`}
-                    className="rounded-md bg-[var(--surface-elevated)] px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                  >
-                    {r.engine}: <span className="font-semibold tabular-nums text-foreground">{r.bpm}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
 
         {/* Tonalité */}
         <section className="mt-3 rounded-xl border border-border bg-card p-3">

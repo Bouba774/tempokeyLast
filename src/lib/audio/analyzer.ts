@@ -2,7 +2,7 @@ import { hashFile } from "./hash";
 import { estimateBPM } from "./bpm";
 import { estimateKey } from "./key";
 import { toCamelot, camelotFor } from "./camelot";
-import { getCachedAnalysis, setCachedAnalysis, type BpmDebugInfo, type TrackAnalysis } from "./cache";
+import { getCachedAnalysis, setCachedAnalysis, type TrackAnalysis } from "./cache";
 import {
   toMono as preToMono,
   resampleTo44k,
@@ -12,64 +12,6 @@ import {
 } from "./preprocess";
 import { getEssentia, freeVectors, type EssentiaInstance } from "./essentia-engine";
 import { analyzeBpmFusion } from "./bpm-fusion";
-import { CACHE_VERSION } from "./cache";
-// Side-effect import: registers `window.tempokeyDebugBpm(file)` for the
-// BPM audit console workflow. Zero runtime cost until called.
-import "./bpm-debug";
-
-// ---------------------------------------------------------------------------
-// Audit logging. Emitted unconditionally (info level) so we can confirm on
-// device (Android WebView / production APK) which engine actually runs for
-// each track. Prefix `[tempokey/bpm-audit]` — grep for it in `adb logcat`.
-// ---------------------------------------------------------------------------
-function auditLog(event: string, data: Record<string, unknown>): void {
-  // eslint-disable-next-line no-console
-  console.info(`[tempokey/bpm-audit] ${event}`, { cache: CACHE_VERSION, ...data });
-}
-
-function roundBpmDebug(n: number | null | undefined, digits = 2): number {
-  if (n == null || !isFinite(n)) return 0;
-  const f = 10 ** digits;
-  return Math.round(n * f) / f;
-}
-
-function buildFusionDebug(fusion: NonNullable<Awaited<ReturnType<typeof analyzeBpmFusion>>>): BpmDebugInfo {
-  const readings = fusion.readings.map((r) => {
-    const stability = r.intervalsCv != null ? 1 - Math.min(0.6, r.intervalsCv) : 0.7;
-    return {
-      engine: r.algo,
-      segment: r.segment,
-      bpm: roundBpmDebug(r.bpm),
-      score: roundBpmDebug(r.weight * (0.4 + 0.6 * r.confidence) * (0.5 + 0.5 * stability), 3),
-      confidence: roundBpmDebug(r.confidence, 3),
-      weight: roundBpmDebug(r.weight, 3),
-      stability: roundBpmDebug(stability, 3),
-    };
-  });
-
-  const grouped = fusion.candidates.map((c) => ({
-    engine: "FusionGroup",
-    segment: "vote",
-    bpm: roundBpmDebug(c.bpm),
-    score: roundBpmDebug(c.score, 3),
-    count: c.count,
-  }));
-
-  return {
-    engineUsed: "essentia-fusion",
-    fallback: false,
-    finalBpm: roundBpmDebug(fusion.bpm),
-    finalEngine: fusion.finalEngine,
-    reason: fusion.decisionReason,
-    cacheVersion: CACHE_VERSION,
-    candidates: grouped,
-    readings,
-    rangeScores: fusion.rangeScores,
-    validated: fusion.validated,
-    switchedToRunnerUp: fusion.switchedToRunnerUp,
-    secondPassApplied: fusion.secondPassApplied,
-  };
-}
 
 let ctx: AudioContext | null = null;
 function getCtx(): AudioContext {
@@ -200,7 +142,6 @@ async function analyzeWithEssentia(
   bpm: number;
   bpmConfidence: number;
   bpmCandidates: { bpm: number; score: number }[];
-  bpmDebug: BpmDebugInfo;
   keyNote: string;
   keyScale: "major" | "minor";
   keyConfidence: number;
@@ -258,7 +199,6 @@ async function analyzeWithEssentia(
     bpm: Math.round(fusion.bpm * 100) / 100,
     bpmConfidence: fusion.confidence,
     bpmCandidates: fusion.candidates.map((c) => ({ bpm: c.bpm, score: c.score })),
-    bpmDebug: buildFusionDebug(fusion),
     keyNote: voted.note,
     keyScale: voted.scale,
     keyConfidence: Math.round(voted.confidence * 100) / 100,
@@ -271,30 +211,6 @@ function fallbackAnalysis(mono: Float32Array, sampleRate: number) {
   return { bpmRes, keyRes };
 }
 
-function buildFallbackDebug(bpmRes: ReturnType<typeof estimateBPM>): BpmDebugInfo {
-  return {
-    engineUsed: "pureJS-fallback",
-    fallback: true,
-    finalBpm: bpmRes.bpm,
-    finalEngine: "HistoricalPureJS",
-    reason: "Fallback utilisé: Essentia ou la fusion BPM n'a pas produit de résultat.",
-    cacheVersion: CACHE_VERSION,
-    candidates: bpmRes.candidates.map((c) => ({
-      engine: "HistoricalPureJS",
-      segment: "full",
-      bpm: c.bpm,
-      score: c.score,
-    })),
-    readings: bpmRes.candidates.map((c) => ({
-      engine: "HistoricalPureJS",
-      segment: "full",
-      bpm: c.bpm,
-      score: c.score,
-    })),
-    rangeScores: [],
-  };
-}
-
 export async function analyzeFile(
   file: File,
   options: AnalyzeOptions = {},
@@ -302,22 +218,8 @@ export async function analyzeFile(
   const fileHash = await hashFile(file);
   if (!options.force) {
     const cached = await getCachedAnalysis(fileHash);
-    if (cached) {
-      auditLog("cache-hit", {
-        file: file.name,
-        hash: fileHash.slice(0, 12),
-        bpm: cached.bpm,
-        key: cached.key,
-        engine: cached.bpmDebug?.engineUsed ?? "unknown-cached-analysis",
-        finalEngine: cached.bpmDebug?.finalEngine ?? "unknown",
-        reason: cached.bpmDebug?.reason ?? "Ancienne entrée de cache sans diagnostic BPM détaillé.",
-        candidates: cached.bpmDebug?.candidates?.slice(0, 5) ?? cached.bpmCandidates?.slice(0, 5),
-        analyzedAt: cached.analyzedAt,
-      });
-      return cached;
-    }
+    if (cached) return cached;
   }
-  auditLog("cache-miss", { file: file.name, hash: fileHash.slice(0, 12), force: !!options.force });
 
   const buf = await file.arrayBuffer();
   const audio = await decode(getCtx(), buf);
@@ -335,7 +237,6 @@ export async function analyzeFile(
   let keyLabel: string | null = null;
   let camelot: string | null = null;
   let keyConfidence: number | null = null;
-  let bpmDebug: BpmDebugInfo | null = null;
 
   // Try Essentia first.
   let usedEssentia = false;
@@ -353,7 +254,6 @@ export async function analyzeFile(
         bpmCandidates = res.bpmCandidates.length
           ? res.bpmCandidates
           : [{ bpm: res.bpm, score: 1 }];
-        bpmDebug = res.bpmDebug;
         usedEssentia = true;
       }
     }
@@ -363,29 +263,15 @@ export async function analyzeFile(
   }
 
   if (!usedEssentia) {
-    auditLog("engine-fallback-pureJS", {
-      file: file.name,
-      reason: "Essentia unavailable or analyzeWithEssentia returned null — VampCompat/fusion NOT applied",
-    });
     // Pure-JS fallback (preserves backward compatibility).
     await new Promise<void>((r) => setTimeout(r, 0));
     const { bpmRes, keyRes } = fallbackAnalysis(trimmed, sr);
     bpm = bpmRes.bpm;
     bpmConfidence = bpmRes.confidence;
     bpmCandidates = bpmRes.candidates;
-    bpmDebug = buildFallbackDebug(bpmRes);
     keyLabel = keyRes?.label ?? null;
     keyConfidence = keyRes?.confidence ?? null;
     camelot = keyRes ? toCamelot(keyRes) : null;
-  } else {
-    auditLog("engine-essentia-fusion", {
-      file: file.name,
-      finalBpm: bpm,
-      bpmConfidence,
-      key: keyLabel,
-      candidates: bpmCandidates.slice(0, 5),
-      debug: bpmDebug,
-    });
   }
 
   const suspect =
@@ -402,16 +288,7 @@ export async function analyzeFile(
     durationSec: audio.duration,
     suspect,
     analyzedAt: Date.now(),
-    bpmDebug,
   };
   await setCachedAnalysis(result);
-  auditLog("stored", {
-    file: file.name,
-    hash: fileHash.slice(0, 12),
-    finalBpm: result.bpm,
-    engine: usedEssentia ? "essentia-fusion" : "pureJS-fallback",
-    finalEngine: result.bpmDebug?.finalEngine,
-    reason: result.bpmDebug?.reason,
-  });
   return result;
 }
