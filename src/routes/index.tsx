@@ -63,6 +63,8 @@ import {
   openAndroidAppSettings,
   requestAudioPermission,
 } from "@/lib/android-permissions";
+import { Switch } from "@/components/ui/switch";
+import { useMixOrderModeStore } from "@/lib/mixorder-mode-store";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -175,6 +177,12 @@ function Home() {
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [permissionDialog, setPermissionDialog] =
     useState<AudioPermissionDialogVariant | null>(null);
+  const mixOrderEnabled = useMixOrderModeStore((s) => s.enabled);
+  const setMixOrderEnabled = useMixOrderModeStore((s) => s.setEnabled);
+
+  function destinationAfterImport(): "/mixorder" | "/workspace" {
+    return useMixOrderModeStore.getState().enabled ? "/mixorder" : "/workspace";
+  }
 
   useEffect(() => {
     void hydrate();
@@ -227,7 +235,7 @@ function Home() {
         });
         setTimeout(() => {
           setProgress(null);
-          navigate({ to: "/workspace" });
+          navigate({ to: destinationAfterImport() });
           void startAnalysis();
         }, 400);
       } catch (err) {
@@ -300,7 +308,7 @@ function Home() {
       });
       setTimeout(() => {
         setProgress(null);
-        navigate({ to: "/workspace" });
+        navigate({ to: destinationAfterImport() });
         void startAnalysis();
       }, 400);
     } catch (err) {
@@ -318,7 +326,7 @@ function Home() {
       if (lib && isCapacitorAndroid()) {
         await restoreFilesForLibrary(lib);
       }
-      navigate({ to: "/workspace" });
+      navigate({ to: destinationAfterImport() });
     }
   }
 
@@ -379,6 +387,26 @@ function Home() {
           </p>
 
           <div className="mt-6 w-full max-w-[min(100%,340px)] space-y-3">
+            <label
+              className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-[var(--surface-elevated)] px-4 py-3 text-left"
+              style={{ boxShadow: "var(--shadow-card)" }}
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-foreground">
+                  Mode MixOrder
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                  {mixOrderEnabled
+                    ? "Après l'import, ouverture de la page MixOrder."
+                    : "Désactivé — TempoKey s'ouvre normalement après l'import."}
+                </span>
+              </span>
+              <Switch
+                checked={mixOrderEnabled}
+                onCheckedChange={(v) => setMixOrderEnabled(!!v)}
+                aria-label="Activer le mode MixOrder"
+              />
+            </label>
             <button
               onClick={pickFolder}
               className="press shine relative flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-2xl text-[clamp(13px,3.6vw,15px)] font-semibold text-[var(--primary-foreground)] animate-fade-in"
