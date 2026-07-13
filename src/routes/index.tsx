@@ -63,6 +63,8 @@ import {
   openAndroidAppSettings,
   requestAudioPermission,
 } from "@/lib/android-permissions";
+import { Switch } from "@/components/ui/switch";
+import { useMixOrderModeStore } from "@/lib/mixorder-mode-store";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -175,6 +177,12 @@ function Home() {
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [permissionDialog, setPermissionDialog] =
     useState<AudioPermissionDialogVariant | null>(null);
+  const mixOrderEnabled = useMixOrderModeStore((s) => s.enabled);
+  const setMixOrderEnabled = useMixOrderModeStore((s) => s.setEnabled);
+
+  function destinationAfterImport(): "/mixorder" | "/workspace" {
+    return useMixOrderModeStore.getState().enabled ? "/mixorder" : "/workspace";
+  }
 
   useEffect(() => {
     void hydrate();
@@ -227,7 +235,7 @@ function Home() {
         });
         setTimeout(() => {
           setProgress(null);
-          navigate({ to: "/workspace" });
+          navigate({ to: destinationAfterImport() });
           void startAnalysis();
         }, 400);
       } catch (err) {
@@ -300,7 +308,7 @@ function Home() {
       });
       setTimeout(() => {
         setProgress(null);
-        navigate({ to: "/workspace" });
+        navigate({ to: destinationAfterImport() });
         void startAnalysis();
       }, 400);
     } catch (err) {
@@ -318,7 +326,7 @@ function Home() {
       if (lib && isCapacitorAndroid()) {
         await restoreFilesForLibrary(lib);
       }
-      navigate({ to: "/workspace" });
+      navigate({ to: destinationAfterImport() });
     }
   }
 

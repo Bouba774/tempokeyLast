@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as MixorderRouteImport } from './routes/mixorder'
 import { Route as LicensesRouteImport } from './routes/licenses'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -30,6 +31,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MixorderRoute = MixorderRouteImport.update({
+  id: '/mixorder',
+  path: '/mixorder',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LicensesRoute = LicensesRouteImport.update({
   id: '/licenses',
   path: '/licenses',
@@ -44,6 +50,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/licenses': typeof LicensesRoute
+  '/mixorder': typeof MixorderRoute
   '/privacy': typeof PrivacyRoute
   '/settings': typeof SettingsRoute
   '/workspace': typeof WorkspaceRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/licenses': typeof LicensesRoute
+  '/mixorder': typeof MixorderRoute
   '/privacy': typeof PrivacyRoute
   '/settings': typeof SettingsRoute
   '/workspace': typeof WorkspaceRoute
@@ -59,21 +67,36 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/licenses': typeof LicensesRoute
+  '/mixorder': typeof MixorderRoute
   '/privacy': typeof PrivacyRoute
   '/settings': typeof SettingsRoute
   '/workspace': typeof WorkspaceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/licenses' | '/privacy' | '/settings' | '/workspace'
+  fullPaths:
+    | '/'
+    | '/licenses'
+    | '/mixorder'
+    | '/privacy'
+    | '/settings'
+    | '/workspace'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/licenses' | '/privacy' | '/settings' | '/workspace'
-  id: '__root__' | '/' | '/licenses' | '/privacy' | '/settings' | '/workspace'
+  to: '/' | '/licenses' | '/mixorder' | '/privacy' | '/settings' | '/workspace'
+  id:
+    | '__root__'
+    | '/'
+    | '/licenses'
+    | '/mixorder'
+    | '/privacy'
+    | '/settings'
+    | '/workspace'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LicensesRoute: typeof LicensesRoute
+  MixorderRoute: typeof MixorderRoute
   PrivacyRoute: typeof PrivacyRoute
   SettingsRoute: typeof SettingsRoute
   WorkspaceRoute: typeof WorkspaceRoute
@@ -102,6 +125,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mixorder': {
+      id: '/mixorder'
+      path: '/mixorder'
+      fullPath: '/mixorder'
+      preLoaderRoute: typeof MixorderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/licenses': {
       id: '/licenses'
       path: '/licenses'
@@ -122,6 +152,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LicensesRoute: LicensesRoute,
+  MixorderRoute: MixorderRoute,
   PrivacyRoute: PrivacyRoute,
   SettingsRoute: SettingsRoute,
   WorkspaceRoute: WorkspaceRoute,
