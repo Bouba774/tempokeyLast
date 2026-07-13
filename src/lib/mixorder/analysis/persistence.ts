@@ -1,4 +1,4 @@
-import type { Track } from "@/lib/workspace-context";
+import type { Track } from "@/lib/mixorder/workspace-adapter";
 import type {
   AnalysisSnapshot,
   AnalyzedTrackData,

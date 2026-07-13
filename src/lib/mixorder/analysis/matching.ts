@@ -1,4 +1,4 @@
-import type { Track } from "@/lib/workspace-context";
+import type { Track } from "@/lib/mixorder/workspace-adapter";
 
 /**
  * Intelligent title matching between DiscDJ readings and MixOrder tracks.

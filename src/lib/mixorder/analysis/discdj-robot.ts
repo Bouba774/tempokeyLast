@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useWorkspace, type Track, type TrackId } from "@/lib/workspace-context";
+import { useWorkspace, type Track, type TrackId } from "@/lib/mixorder/workspace-adapter";
 import {
   getBridge,
   isPlausibleBpm,
